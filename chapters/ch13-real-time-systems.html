@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 13: Real-Time Systems | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to Real-Time Systems in Node.js: WebSockets, Server-Sent Events (SSE), Socket.IO, horizontal scaling with Redis Pub/Sub, presence tracking, and chat architecture.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="13">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART II — Node.js and Express.js Backend Engineering</div>
+          <h1 class="chapter-title">Chapter 13: Real-Time Systems</h1>
+          <p class="chapter-lead">
+            Bi-directional and streaming architectures: WebSockets vs Server-Sent Events (SSE) vs Long Polling, HTTP Upgrade handshakes, Socket.IO internals, socket authentication, horizontal scaling with Redis Pub/Sub, presence detection, and enterprise chat blueprints.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Real-Time Networking</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Compare Short Polling, Long Polling, Server-Sent Events (SSE), and WebSockets across protocol overhead and directional flow.</li>
+            <li>Understand the <strong>HTTP 101 Switching Protocols</strong> handshake establishing persistent TCP WebSocket connections.</li>
+            <li>Implement JWT authentication over WebSockets during the connection establishment phase.</li>
+            <li>Horizontally scale stateful WebSocket servers across multi-instance clusters using <strong>Redis Pub/Sub</strong>.</li>
+            <li>Track user presence (online/offline/away) using heartbeat ping/pong frames and Redis TTL keys.</li>
+            <li>Guarantee message delivery and ordering across distributed nodes using sequence IDs and acknowledgment receipts.</li>
+            <li>Architect an enterprise real-time chat application handling 1-on-1 messages, rooms, and read receipts.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Transport Mechanisms: Polling vs SSE vs WebSockets</h2>
+        <p>
+          Traditional HTTP is unidirectional: the client requests data, and the server responds. Real-time applications require the server to push data to the client instantly.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Technology</th>
+                <th>Directionality</th>
+                <th>Underlying Protocol</th>
+                <th>Reconnection & State</th>
+                <th>Best Architectural Fit</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Short Polling</strong></td>
+                <td>Client \(\to\) Server (Repeated)</td>
+                <td>Standard HTTP (New TCP handshake every \(N\) seconds)</td>
+                <td>Stateless. High overhead due to repeated HTTP headers.</td>
+                <td>Infrequent updates where real-time latency is unnecessary (e.g. tracking package shipping status every 5 minutes).</td>
+              </tr>
+              <tr>
+                <td><strong>Long Polling</strong></td>
+                <td>Client \(\to\) Server (Held)</td>
+                <td>Standard HTTP (Server holds request open until data is ready)</td>
+                <td>Stateless. High connection churning on frequent events.</td>
+                <td>Fallback when corporate firewalls block raw WebSockets.</td>
+              </tr>
+              <tr>
+                <td><strong>Server-Sent Events (SSE)</strong></td>
+                <td><strong>Unidirectional</strong> (Server \(\to\) Client only)</td>
+                <td>HTTP streaming (<code>text/event-stream</code> over single HTTP connection)</td>
+                <td>Built-in browser auto-reconnect via <code>EventSource</code>; lightweight.</td>
+                <td>Stock tickers, live sports scores, Twitter/news feeds, LLM token streaming (ChatGPT).</td>
+              </tr>
+              <tr>
+                <td><strong>WebSockets (WS)</strong></td>
+                <td><strong>Full-Duplex Bi-directional</strong></td>
+                <td>Independent TCP protocol (starts with HTTP 101 Upgrade, switches to WS frames)</td>
+                <td>Stateful persistent socket. Minimal 2–10 byte frame overhead.</td>
+                <td>Multiplayer gaming, collaborative whiteboards (Figma), financial trading terminals, interactive chat.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <h2>2. The WebSocket Protocol & HTTP Upgrade Handshake</h2>
+        <p>
+          WebSockets do not reinvent transport networking: they run over standard TCP (Port 80/443). The connection begins as a standard HTTP/1.1 request containing upgrade headers:
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+Client (Browser)                                                         Server (Node.js)
+  |                                                                           |
+  | 1. GET /chat HTTP/1.1                                                     |
+  |    Host: app.example.com                                                  |
+  |    Upgrade: websocket                                                     |
+  |    Connection: Upgrade                                                    |
+  |    Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==                            |
+  |    Sec-WebSocket-Version: 13 -------------------------------------------> |
+  |                                                                           |
+  |                                 * Server validates Sec-WebSocket-Key      |
+  |                                 * Concatenates GUID & hashes with SHA-1   |
+  |                                                                           |
+  | <--- 2. HTTP/1.1 101 Switching Protocols -------------------------------- |
+  |         Upgrade: websocket                                                |
+  |         Connection: Upgrade                                               |
+  |         Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=                |
+  |                                                                           |
+  | ================= [PERSISTENT BI-DIRECTIONAL TCP PIPE] =================== |
+  |                                                                           |
+  | <==== Small binary/text frames (<Buffer 81 85 ...>) sent both ways =====> |
+          </div>
+          <div class="diagram-caption">Figure 13.1: The WebSocket HTTP 101 Switching Protocols Handshake</div>
+        </div>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <h2>3. Horizontal Scaling with Redis Pub/Sub</h2>
+        <p>
+          A single Node.js process can easily maintain 50,000 idle WebSocket connections. However, in production, your application is load-balanced across multiple servers or Kubernetes pods:
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++-------------------------+                           +-------------------------+
+|   Client Alice (App)    |                           |     Client Bob (App)    |
++-------------------------+                           +-------------------------+
+             |                                                     |
+             v (Socket Connection)                                 v (Socket Connection)
++-------------------------+                           +-------------------------+
+|    Server Instance 1    |                           |    Server Instance 2    |
++-------------------------+                           +-------------------------+
+             |                                                     ^
+             | 1. Alice sends message to Bob                       | 3. Emits to Bob's socket
+             v                                                     |
++-------------------------------------------------------------------------------+
+|                       REDIS PUB/SUB MESSAGE BROKER                            |
+|             (2. Server 1 publishes event to channel 'chat:bob')               |
++-------------------------------------------------------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 13.2: Scaling Stateful WebSockets Horizontally via Redis Pub/Sub</div>
+        </div>
+
+        <h3>Why Redis Pub/Sub is Required</h3>
+        <p>
+          If Alice is connected to Server 1, and Bob is connected to Server 2, Server 1 cannot write to Bob's socket directly because Bob's TCP socket descriptor exists in Server 2's memory!
+        </p>
+        <p>
+          By connecting all Node instances to a shared <strong>Redis Pub/Sub</strong> adapter (e.g. <code>@socket.io/redis-adapter</code>), when Server 1 emits a message to room <code>room:123</code>, Redis broadcasts the event to all server nodes, which emit it to their locally connected clients.
+        </p>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <h2>4. Socket Authentication and Heartbeat Presence</h2>
+
+        <h3>Authentication during Connection Handshake</h3>
+        <pre><code class="language-javascript">// server.js - Socket.IO Authentication Middleware
+const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
+
+const io = new Server(httpServer, {
+  cors: { origin: "https://myfrontend.com", credentials: true }
+});
+
+// Enforce JWT validation on connection
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token || socket.handshake.headers['authorization']?.split(' ')[1];
+
+  if (!token) {
+    return next(new Error("Authentication error: Token missing"));
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) return next(new Error("Authentication error: Invalid or expired token"));
+    // Attach authenticated user identity directly to socket instance!
+    socket.data.user = decoded;
+    next();
+  });
+});
+
+io.on('connection', (socket) => {
+  const user = socket.data.user;
+  console.log(`User connected: ${user.id} on socket ${socket.id}`);
+
+  // Automatically join user to their personal private room for direct notifications
+  socket.join(`user:${user.id}`);
+});</code></pre>
+
+        <h3>Heartbeats & Presence Tracking</h3>
+        <p>
+          Network cables can be unplugged or mobile phones can enter tunnels without sending a TCP <code>FIN</code> packet (creating a <strong>Half-Open Socket</strong>). The server thinks the client is connected, leaking resources.
+        </p>
+        <p>
+          WebSockets solve this via <strong>Ping/Pong frames</strong>: the server sends a <code>ping</code> frame every 25 seconds; if the client does not respond with a <code>pong</code> frame within 20 seconds, the server forcefully closes the dead socket and marks the user offline.
+        </p>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <h2>5. Complete Real-Time Chat Architecture Blueprint</h2>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++-------------------------------------------------------------------------------+
+|                             ENTERPRISE CHAT ARCHITECTURE                      |
++-------------------------------------------------------------------------------+
+1. User sends message: { id: UUID, tempId: UUID, roomId: 'room_1', text: 'Hi' }
+   |
+2. Server validates room membership & persistence:
+   |-- Saves message to PostgreSQL / MongoDB (Status: 'sent', serverTimestamp: NOW())
+   |-- Broadcasts message to room members via Redis Pub/Sub
+   |-- Returns client ACK with real server ID and timestamp
+   |
+3. Recipient receives message:
+   |-- Emits ACK: { messageId: UUID, status: 'delivered' }
+   |-- Recipient opens chat view -> Emits ACK: { messageId: UUID, status: 'read' }
+   |
+4. Server updates DB status to 'read' & pushes receipt event to Sender
+          </div>
+          <div class="diagram-caption">Figure 13.3: End-to-End Delivery and Read Receipt Lifecycle</div>
+        </div>
+
+        <hr>
+
+        <!-- Section 6: Interview Questions and Answers -->
+        <section class="interview-section">
+          <h2>Interview Questions and Answers</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            20 senior technical interview questions covering WebSockets, Server-Sent Events, real-time scaling, reconnection backoff, and delivery guarantees.
+          </p>
+
+          <div class="qa-toolbar">
+            <div class="qa-filter-btns">
+              <button class="qa-filter-btn active" data-filter="all">All (20)</button>
+              <button class="qa-filter-btn" data-filter="beginner">Beginner</button>
+              <button class="qa-filter-btn" data-filter="intermediate">Intermediate</button>
+              <button class="qa-filter-btn" data-filter="advanced">Advanced</button>
+              <button class="qa-filter-btn" data-filter="scenario">Scenario</button>
+            </div>
+            <button class="qa-toggle-all" type="button">Expand All Answers</button>
+          </div>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What are the primary differences between WebSockets and Server-Sent Events (SSE)? When would you choose SSE over WebSockets?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "WebSockets provide full-duplex, bi-directional communication over a single TCP connection, allowing both client and server to transmit data independently with minimal frame overhead. Server-Sent Events (SSE) provide unidirectional streaming strictly from server to client over standard HTTP. I choose SSE when the client only needs to receive live updates—such as stock tickers, live sports scores, notification feeds, or LLM token streams (ChatGPT)—because SSE uses standard HTTP, handles corporate firewalls easily, works natively over HTTP/2, and has built-in automatic browser reconnection."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">How does the HTTP 101 Switching Protocols handshake work when establishing a WebSocket connection?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The client sends a standard HTTP GET request with headers `Upgrade: websocket`, `Connection: Upgrade`, and a random base64 string in `Sec-WebSocket-Key`. The server verifies the headers, concatenates the key with a standard RFC GUID (`258EAFA5-E914-47DA-95CA-C5AB0DC85B11`), hashes it with SHA-1, base64 encodes it, and returns HTTP `101 Switching Protocols` with `Sec-WebSocket-Accept`. Both parties immediately switch from HTTP to the binary WebSocket framing protocol over the established TCP socket."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">How do you scale stateful WebSockets horizontally across multiple Node.js backend servers?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Because WebSockets maintain persistent, stateful TCP connections, two users in the same chat room might be connected to two different physical servers behind a load balancer. We scale this by connecting all Node.js server instances to a shared Redis Pub/Sub message broker (using the Socket.IO Redis adapter). When Server 1 emits a message to a room, it publishes the event to Redis, which broadcasts it to all other server nodes, allowing each node to deliver the message to its locally connected sockets."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">How should authentication be handled for WebSocket connections? Can you send an Authorization header?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Native browser `WebSocket()` JavaScript API does not allow setting custom HTTP headers like `Authorization: Bearer <token>`. There are two secure patterns: 1. Pass the JWT token in the connection query parameter or protocol subprotocol over encrypted WSS (`wss://api.com/ws?token=...`) and validate it in the connection handler. 2. Rely on an `HttpOnly` session cookie sent automatically during the initial HTTP upgrade handshake. In Socket.IO, authentication is passed in the handshake auth payload: `socket = io({ auth: { token } })` and validated via middleware."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What is a Half-Open Socket, and how do Ping/Pong heartbeat frames resolve it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Half-Open Socket occurs when a network connection is broken (e.g. mobile client enters a tunnel, network cable pulled) without sending a TCP `FIN` packet. The operating system kernel and server assume the connection is still alive, keeping the socket and memory open indefinitely. Ping/Pong frames act as an application-level heartbeat: the server sends periodic `ping` frames; if the client fails to return a `pong` within a timeout, the server terminates the dead socket and updates presence to offline."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">What is Socket.IO, and how does it differ from raw WebSockets?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Socket.IO is NOT just a WebSocket library; it is a real-time event-based framework. It uses Engine.IO to start connections with HTTP long-polling and transparently upgrades to WebSockets if available. It adds enterprise features on top of raw WebSockets: automatic reconnection with backoff, rooms, namespaces, acknowledgment callbacks, and packet buffering when offline."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">What is the difference between Socket.IO Namespaces and Rooms?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Namespaces allow splitting the application logic over a single shared connection with different endpoints (e.g. `/chat` vs `/admin`), supporting distinct middleware and auth pipelines. Rooms are server-only channels within a namespace that sockets can join or leave (e.g. `socket.join('room:123')`). Clients cannot see rooms directly; servers use rooms to broadcast events to a targeted subset of sockets (`io.to('room:123').emit(...)`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">Explain the three messaging delivery guarantees: At-Most-Once, At-Least-Once, and Exactly-Once. How do you implement Exactly-Once semantics?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "1. At-Most-Once: Fire-and-forget; messages may be lost but are never duplicated. 2. At-Least-Once: Messages are retried until an ACK is received; messages are never lost, but network hiccups can cause duplicates. 3. Exactly-Once: Every message is processed exactly once. In distributed real-time systems, true network Exactly-Once is physically impossible due to the Two Generals' Problem; we simulate it by pairing At-Least-Once retries with an Idempotency Key (UUID) and deduplication table at the receiver."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">Scenario: A user sends a chat message while their mobile app briefly loses internet. How do you design the client and server so the message isn't lost and order is preserved?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I implement an Optimistic UI with an Offline Queue: 1. The client generates a temporary message UUID and renders the message immediately in the UI with a pending status icon. 2. The message is stored in an IndexedDB outbound queue. 3. When reconnection occurs, an offline synchronizer flushes queued messages sequentially with monotonic client timestamps. 4. The server validates, persists to DB, assigns a permanent server sequence ID, and returns an ACK matching the temporary UUID, which transitions the message status to 'sent'."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">Why do WebSockets require Sticky Sessions (Session Affinity) on load balancers when using Socket.IO?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Socket.IO begins its handshake with HTTP long-polling before upgrading to WebSockets. The client issues multiple consecutive HTTP requests to establish the session. If the load balancer routes request 1 to Server A and request 2 to Server B without sticky sessions, Server B will reject the request with `Session ID unknown` (HTTP 400), causing handshake failures. Sticky sessions ensure all HTTP requests from a client reach the same server until the WebSocket upgrade succeeds."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">How do you implement User Presence Tracking (Online / Away / Offline) efficiently at scale?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Storing presence solely in database rows causes heavy disk write traffic. In production, we use Redis Hashes and TTLs: when a socket connects, we set a Redis key `presence:user_123` with a 60-second TTL. The client's socket sends periodic heartbeats refreshing the TTL. If a socket disconnects (or the server crashes and heartbeats stop), the key expires naturally in Redis. Other servers subscribe to Redis keyspace notifications (`expired` events) to broadcast offline status to friends."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the difference between `ws://` and `wss://`?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`ws://` is unencrypted WebSocket traffic running over plaintext TCP (port 80). `wss://` is encrypted WebSocket traffic running over TLS/SSL (port 443), identical to HTTPS. In production, you must always use `wss://` to protect message payloads from eavesdropping and prevent intermediary proxy servers and firewalls from dropping or corrupting WebSocket frames."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is the C10K / C1000K problem, and how do Linux kernel limits (`ulimit -n`) affect WebSocket servers?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The C10K problem refers to the challenge of an OS handling 10,000+ concurrent connections simultaneously. In Linux, every active TCP socket is represented as an open File Descriptor (FD). By default, Linux limits processes to 1,024 open file descriptors (`ulimit -n`). A WebSocket server attempting to accept 1,025 connections will crash with `EMFILE: too many open files`. In production, system administrators raise `ulimit -n` to 65,536 or higher and tune kernel TCP buffer sizes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">How do you implement message delivery receipts (Sent, Delivered, Read) in a chat application?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "1. Sent: The server writes the message to the database and sends an immediate ACK callback to the sender. 2. Delivered: When the recipient's device receives the socket frame, its client automatically emits an event `{ messageId, status: 'delivered' }` back to the server, which forwards the update to the sender. 3. Read: When the recipient opens the chat screen or scrolls the message into view, the client emits `{ messageId, status: 'read' }`, and the server updates the DB and pushes the read receipt."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">Scenario: During a live streaming event with 100,000 users in a single chat room, incoming messages cause high server CPU load. How do you optimize chat broadcasting?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Broadcasting 1,000 incoming messages per second individually to 100,000 sockets produces 100 million socket writes per second, overwhelming the event loop. I implement: 1. Message Throttling & Batching: Buffer incoming chat messages and broadcast them as a batched array once every 250ms. 2. Conflation/Sampling: In massive live streams (like Twitch), sample or rate-limit visible messages. 3. Move from unicast WebSockets to WebRTC data channels or SSE behind a CDN edge cache."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How do you handle JWT expiration for an active WebSocket connection that remains connected for hours?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Since WebSockets do not send HTTP headers on every message, an initial 15-minute access token will expire while the connection is still open. There are two solutions: 1. Token Refresh over Sockets: The client listens for its local access token expiry, obtains a new token via HTTP refresh, and emits a `token_refresh` socket event with the new token. 2. Server-side Expiry Timer: The server records the token's `exp` timestamp upon connection and schedules a timer: if the client does not send a refreshed token before expiration, the server forcefully disconnects the socket."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is Long Polling, and how does it simulate real-time communication?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In Long Polling, the client sends an HTTP request to the server. Instead of responding immediately with an empty response, the server holds the request open until new data is available (or a timeout occurs). As soon as data arrives, the server sends the HTTP response, and the client immediately issues another HTTP request to wait for the next event. It simulates real-time pushing using traditional HTTP request-response cycles."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">How does WebSocket frame masking work, and why does the client mask frames while the server does not?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Under RFC 6455, all frames sent from Client to Server MUST be masked with a random 4-byte key (XORing the payload). Frames from Server to Client are unmasked. Masking prevents Cache Poisoning attacks on intermediate proxy servers: without masking, a malicious web page could craft an unmasked WebSocket frame containing an HTTP GET request, tricking an un-upgraded proxy into caching an attacker-controlled response for other users."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">Scenario: How do you design a reconnection strategy on the frontend so a temporary server restart doesn't trigger a thundering herd of 50,000 simultaneous reconnections?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I implement Exponential Backoff with Jitter: the reconnection delay increases exponentially on each failed attempt (`baseDelay * 2^attempt`, capped at 30 seconds), multiplied by a random jitter factor between 0.5 and 1.5. The jitter spreads the 50,000 reconnection attempts smoothly across a 10-to-30 second window rather than all clients attempting to reconnect at the exact same second, allowing the recovering backend to accept connections without crashing."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How does WebRTC differ from WebSockets? When would you use WebRTC Data Channels?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "WebSockets always route traffic through a centralized server over TCP. WebRTC establishes direct Peer-to-Peer (P2P) connections between two browsers using UDP (via STUN/TURN signaling). WebRTC Data Channels provide ultra-low latency peer-to-peer data transfer with configurable reliability (can choose unreliable/unordered mode for gaming or reliable mode for file sharing), bypassing server bandwidth completely for high-volume peer-to-peer applications."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

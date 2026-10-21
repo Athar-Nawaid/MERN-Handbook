@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 33: System Design Fundamentals | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master system design fundamentals: back-of-the-envelope capacity estimations, vertical vs horizontal scaling, L4 vs L7 load balancers, CDNs, and high availability SLA math.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="33">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VII — System Design and Distributed Systems</div>
+          <h1 class="chapter-title">Chapter 33: System Design Fundamentals</h1>
+          <p class="chapter-lead">
+            The architectural blueprint for web scale: the 4-step interview framework, back-of-the-envelope capacity estimations, vertical vs. horizontal scaling economics, Layer 4 vs. Layer 7 load balancing, reverse proxy topologies, CDN edge caching, and High Availability SLA engineering.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">System Design Blueprint</span>
+              <span class="meta-pill">Capacity Math &amp; L4/L7</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Execute the proven <strong>4-Step System Design Interview Framework</strong> to lead discussions with confidence and structured clarity.</li>
+            <li>Perform rapid <strong>Back-of-the-Envelope Calculations</strong> for QPS, bandwidth, and multi-year storage requirements using latency rules of thumb.</li>
+            <li>Evaluate <strong>Vertical Scaling (Scale-Up)</strong> against <strong>Horizontal Scaling (Scale-Out)</strong> across financial, architectural, and operational dimensions.</li>
+            <li>Differentiate <strong>Layer 4 (Transport / TCP)</strong> vs <strong>Layer 7 (Application / HTTP)</strong> load balancers and compare balancing algorithms (Round Robin, Least Connections, Consistent Hashing).</li>
+            <li>Architect edge acceleration using <strong>Content Delivery Networks (CDNs)</strong> (Push vs Pull models, surrogate key invalidation).</li>
+            <li>Calculate system uptime using <strong>High Availability SLA Math</strong> ("the nines") and eliminate Single Points of Failure (SPOF) with Active-Passive and Active-Active failover models.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The 4-Step System Design Interview Blueprint</h2>
+        <p>
+          System design interviews evaluate your ability to navigate ambiguity, analyze architectural trade-offs, and design distributed software under real-world constraints. Never jump straight to drawing databases or microservice boxes. Follow this battle-tested 4-step structure:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: The 4-Step System Design Workflow</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">+-------------------------------------------------------------------------+
+| STEP 1: Understand the Problem &amp; Scope Requirements (3–5 mins)         |
+|         - Functional Requirements: Top 2–3 user actions only            |
+|         - Non-Functional: Scale (DAU), Latency (&lt;200ms), High Avail     |
+|         - Out of Scope: What we explicitly agree NOT to build today     |
++-------------------------------------------------------------------------+
+                                    |
+                                    v
++-------------------------------------------------------------------------+
+| STEP 2: Capacity Estimation &amp; High-Level Architecture (10–12 mins)      |
+|         - Math: QPS, Peak QPS, Read/Write Ratio, 5-Year Storage Space   |
+|         - High-Level Diagram: Client -&gt; CDN/LB -&gt; App -&gt; DB / Cache     |
+|         - Core API contracts: Endpoints, Request Body, Response         |
++-------------------------------------------------------------------------+
+                                    |
+                                    v
++-------------------------------------------------------------------------+
+| STEP 3: Deep Dive into Core Bottlenecks &amp; Components (15–20 mins)       |
+|         - Data Modeling: SQL relational vs NoSQL document schema        |
+|         - Caching Layer: Redis Cache-Aside &amp; TTL invalidation           |
+|         - Database Scaling: Read Replicas vs Sharding (Partition Key)   |
+|         - Concurrency: Distributed Locks, Race Conditions, Message Bus  |
++-------------------------------------------------------------------------+
+                                    |
+                                    v
++-------------------------------------------------------------------------+
+| STEP 4: Fault Tolerance, Resilience &amp; Wrap-Up (5 mins)                 |
+|         - Single Points of Failure (SPOF) identification                |
+|         - Disaster Recovery: Multi-region failover, Circuit Breakers    |
+|         - Monitoring: Metrics, Rate Limiting, SLOs/SLIs                 |
++-------------------------------------------------------------------------+</code></pre>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Back-of-the-Envelope Estimation &amp; Latency Numbers</h2>
+        <p>
+          To make sound architectural decisions, engineers must understand hardware orders of magnitude. Jeff Dean (Chief Scientist at Google) popularized the "Latency Numbers Every Programmer Should Know":
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Operation</th>
+                <th>Latency (Real Time)</th>
+                <th>Human Scaled (1 ns = 1 sec)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>L1 CPU Cache Reference</td>
+                <td>~0.5 – 1.0 ns</td>
+                <td>1 second</td>
+              </tr>
+              <tr>
+                <td>L2 CPU Cache Reference</td>
+                <td>~3.0 – 4.0 ns</td>
+                <td>3 – 4 seconds</td>
+              </tr>
+              <tr>
+                <td>Main Memory (RAM) Reference</td>
+                <td>~100 ns</td>
+                <td>1.6 minutes</td>
+              </tr>
+              <tr>
+                <td>Read 1 MB sequentially from RAM</td>
+                <td>~3 – 4 µs</td>
+                <td>1 hour</td>
+              </tr>
+              <tr>
+                <td>Read 1 MB sequentially from NVMe SSD</td>
+                <td>~200 µs</td>
+                <td>2.3 days</td>
+              </tr>
+              <tr>
+                <td>Read 1 MB sequentially from Spinning Disk (HDD)</td>
+                <td>~10,000 – 20,000 µs (10–20 ms)</td>
+                <td>4 months</td>
+              </tr>
+              <tr>
+                <td>Intra-Datacenter Network Round-Trip</td>
+                <td>~500 µs (0.5 ms)</td>
+                <td>5.7 days</td>
+              </tr>
+              <tr>
+                <td>Transatlantic Network Ping (US to Europe)</td>
+                <td>~150,000 µs (150 ms)</td>
+                <td>4.7 years</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Powers of Two Byte Math</h3>
+        <p>
+          Quick mental conversions prevent embarrassing calculation stalls in interviews:
+        </p>
+        <ul>
+          <li>\(2^{10} \approx 1,000\) bytes = <strong>1 KB</strong> (Kilobyte)</li>
+          <li>\(2^{20} \approx 1,000,000\) bytes = <strong>1 MB</strong> (Megabyte)</li>
+          <li>\(2^{30} \approx 1,000,000,000\) bytes = <strong>1 GB</strong> (Gigabyte)</li>
+          <li>\(2^{40} \approx 1,000,000,000,000\) bytes = <strong>1 TB</strong> (Terabyte)</li>
+          <li>\(2^{50} \approx 1,000,000,000,000,000\) bytes = <strong>1 PB</strong> (Petabyte)</li>
+          <li><strong>Seconds in a day:</strong> \(24 \times 60 \times 60 = 86,400\) (Round to <strong>\(10^5\)</strong> or <strong>\(86,000\)</strong> in mental math).</li>
+        </ul>
+
+        <h3>Step-by-Step Calculation Walkthrough</h3>
+        <p>
+          <strong>Scenario:</strong> Design a status feed application with <strong>100 Million Daily Active Users (DAU)</strong>. On average, each user reads 20 feed posts per day and publishes 2 new posts per day. Each post payload is 500 bytes.
+        </p>
+        <ol>
+          <li>
+            <strong>Read Throughput (QPS):</strong>
+            \[
+            \text{Daily Reads} = 100\text{M users} \times 20 = 2\text{ Billion reads/day}
+            \]
+            \[
+            \text{Read QPS} = \frac{2,000,000,000}{86,400 \text{ sec}} \approx 23,000 \text{ QPS}
+            \]
+            \[
+            \text{Peak Read QPS} (\times 2) \approx 46,000 \text{ QPS}
+            \]
+          </li>
+          <li>
+            <strong>Write Throughput (QPS):</strong>
+            \[
+            \text{Daily Writes} = 100\text{M users} \times 2 = 200\text{ Million writes/day}
+            \]
+            \[
+            \text{Write QPS} = \frac{200,000,000}{86,400 \text{ sec}} \approx 2,300 \text{ QPS}
+            \]
+          </li>
+          <li>
+            <strong>5-Year Storage Requirement:</strong>
+            \[
+            \text{Daily Data} = 200\text{M posts} \times 500 \text{ bytes} = 100\text{ GB / day}
+            \]
+            \[
+            \text{Annual Data} = 100\text{ GB} \times 365 \approx 36.5\text{ TB / year}
+            \]
+            \[
+            \text{5-Year Storage} = 36.5\text{ TB} \times 5 \approx 182.5\text{ TB}
+            \]
+          </li>
+        </ol>
+
+        <!-- Section 3 -->
+        <h2>3. Vertical vs. Horizontal Scaling Economics</h2>
+        
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Scaling Dimension</th>
+                <th>Vertical Scaling (Scale-Up)</th>
+                <th>Horizontal Scaling (Scale-Out)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Mechanism</strong></td>
+                <td>Add more CPU cores, RAM, and faster NVMe drives to a single server instance (e.g., upgrading from AWS <code>t3.large</code> to <code>u-24tb1.112xlarge</code>).</td>
+                <td>Add more independent commodity instances behind a load balancer (e.g., running 20 <code>c6i.xlarge</code> instances in an Auto Scaling Group).</td>
+              </tr>
+              <tr>
+                <td><strong>Hardware Limits &amp; Cost</strong></td>
+                <td>Hard physical hardware limits (motherboard sockets, memory bus). High-end enterprise servers exhibit steep non-linear cost curves.</td>
+                <td>Virtually unlimited horizontal elasticity. Linear cost model using cheap, interchangeable commodity cloud VMs.</td>
+              </tr>
+              <tr>
+                <td><strong>Software Complexity</strong></td>
+                <td>Extremely simple: zero distributed system coordination, zero network serialization latency, standard ACID transactions.</td>
+                <td>Complex: requires load balancers, stateless application design, distributed caching, data partitioning, and eventual consistency.</td>
+              </tr>
+              <tr>
+                <td><strong>Availability &amp; SPOF</strong></td>
+                <td>Single Point of Failure: if the physical motherboard or hypervisor crashes, the entire system is down.</td>
+                <td>Fault-tolerant: individual nodes can fail or be recycled without disrupting overall system availability.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Load Balancing: Layer 4 vs. Layer 7</h2>
+        <p>
+          A <strong>Load Balancer (LB)</strong> distributes incoming traffic across a pool of backend servers to prevent overload and ensure high availability.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Layer 4 Load Balancer (Transport Layer)</th>
+                <th>Layer 7 Load Balancer (Application Layer)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>OSI Layer &amp; Inspection</strong></td>
+                <td>Operates at Layer 4 (TCP/UDP). Inspects only IP addresses and TCP port numbers. Does not parse HTTP payloads.</td>
+                <td>Operates at Layer 7 (Application). Decrypts TLS and parses HTTP headers, cookies, query parameters, and JSON bodies.</td>
+              </tr>
+              <tr>
+                <td><strong>Performance &amp; Overhead</strong></td>
+                <td>⚡ Ultra-fast; minimal CPU overhead. Simply routes raw TCP packets via NAT (Network Address Translation).</td>
+                <td>⏳ Higher CPU overhead due to TLS termination and deep HTTP packet inspection.</td>
+              </tr>
+              <tr>
+                <td><strong>Routing Capabilities</strong></td>
+                <td>Blind forwarding based only on IP/Port. Cannot route based on URI path or headers.</td>
+                <td>Intelligent routing: routes <code>/api/v1/auth</code> to auth cluster, <code>/images/*</code> to CDN/S3, or checks cookies for session sticky routing.</td>
+              </tr>
+              <tr>
+                <td><strong>Examples</strong></td>
+                <td>AWS Network Load Balancer (NLB), HAProxy (TCP mode), IPVS, LVS.</td>
+                <td>AWS Application Load Balancer (ALB), Nginx, Envoy, Cloudflare.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Load Balancing Algorithms</h3>
+        <ul>
+          <li><strong>Round Robin:</strong> Distributes requests sequentially across servers. Best when all instances have identical hardware and requests have uniform processing times.</li>
+          <li><strong>Weighted Round Robin:</strong> Assigns higher request quotas to servers with more CPU/RAM capacity.</li>
+          <li><strong>Least Connections:</strong> Directs traffic to the server with the fewest active concurrent connections. Ideal for long-lived WebSocket connections or varied transaction durations.</li>
+          <li><strong>IP Hash / Sticky Sessions:</strong> Hashes the client's IP address to route them deterministically to the same server. Essential when legacy applications store in-memory state, though it impairs autoscaling elasticity.</li>
+          <li><strong>Consistent Hashing:</strong> Maps both servers and resource keys to an abstract hash ring. When nodes are added or removed, only \(1/N\) of keys need to be remapped, minimizing cache churn.</li>
+        </ul>
+
+        <!-- Section 5 -->
+        <h2>5. Content Delivery Networks (CDNs) &amp; Edge Caching</h2>
+        <p>
+          A <strong>Content Delivery Network (CDN)</strong> is a geographically distributed network of proxy servers (Points of Presence / PoPs) positioned close to end users to deliver static and cacheable dynamic web assets with minimal latency.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Pull vs Push CDN Architectures</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">PULL CDN (Origin Pull - Standard Web Model):
+Client (Tokyo) ---&gt; Edge PoP (Tokyo) [Cache Miss!]
+                          |
+                          |-- Pulls asset from Origin (Virginia, US) ---&gt; Origin Server
+                          |&lt;-- Stores copy in Tokyo Edge Cache (TTL) &lt;----
+Client (Tokyo) &lt;----------| (Future Tokyo requests hit Edge in 5ms!)
+
+PUSH CDN (Direct Upload Model):
+Build CI Pipeline ---&gt; Uploads 50GB video/installer directly to CDN Storage
+Edge PoPs pre-loaded worldwide before users ever request the content</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. High Availability SLA Engineering ("The Nines")</h2>
+        <p>
+          Availability is mathematically calculated as:
+          \[
+          \text{Availability} = \frac{\text{Uptime}}{\text{Uptime} + \text{Downtime}}
+          \]
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Availability SLA</th>
+                <th>Downtime per Year</th>
+                <th>Downtime per Month</th>
+                <th>Typical Architecture Requirements</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>99% ("Two Nines")</strong></td>
+                <td>3 days, 15 hours</td>
+                <td>7 hours, 18 mins</td>
+                <td>Single cloud VM; manual backups; regular maintenance windows permitted.</td>
+              </tr>
+              <tr>
+                <td><strong>99.9% ("Three Nines")</strong></td>
+                <td>8 hours, 45 mins</td>
+                <td>43 minutes</td>
+                <td>Load-balanced multi-instance tier; automated database failover within a single cloud region.</td>
+              </tr>
+              <tr>
+                <td><strong>99.99% ("Four Nines")</strong></td>
+                <td>52 minutes, 36 secs</td>
+                <td>4.3 minutes</td>
+                <td>Multi-Availability Zone (Multi-AZ) active-active architecture; automated health checks; zero-downtime rolling deploys.</td>
+              </tr>
+              <tr>
+                <td><strong>99.999% ("Five Nines")</strong></td>
+                <td>5 minutes, 15 secs</td>
+                <td>26 seconds</td>
+                <td>Multi-region active-active deployments; automated traffic failover via Anycast/DNS; telecom and financial grade resilience.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Back-of-the-Envelope Capacity Estimation</h3>
+        <p>
+          <strong>Scenario:</strong> You are designing a URL Shortener (like TinyURL). It handles <strong>500 Million new URLs created per month</strong>. Read to write ratio is <strong>100:1</strong>. URLs must be stored for <strong>10 years</strong>. Calculate: 1) Write QPS, 2) Read QPS, 3) 10-year storage capacity assuming each record takes 500 bytes.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">Calculation Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-text">1. Write QPS:
+   500M URLs / month = 500M / (30 days * 86,400s) = 500,000,000 / 2,592,000s
+   Write QPS ~ 193 writes/sec (Round to ~200 QPS)
+
+2. Read QPS (100:1 ratio):
+   Read QPS = 200 * 100 = 20,000 reads/sec
+   Peak Read QPS (~2x) = 40,000 reads/sec
+
+3. 10-Year Storage Requirement:
+   Total Records = 500M/month * 12 months * 10 years = 60 Billion URLs
+   Storage = 60 Billion * 500 bytes = 30,000 Billion bytes
+   30,000,000,000,000 bytes / (10^12) = 30 Terabytes (TB)
+
+Conclusion:
+30 TB over 10 years fits comfortably within modern relational or NoSQL database clusters with modest disk provisioning.</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: Nginx Reverse Proxy with Rate Limiting and Load Balancing</h3>
+        <p>
+          <strong>Scenario:</strong> Configure an Nginx reverse proxy that distributes traffic across two Node.js upstream servers (<code>app1:3000</code> and <code>app2:3000</code>) using least-connections balancing, terminates TLS, and enforces an IP rate limit of 10 req/sec.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">Nginx Configuration</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-nginx">http {
+  # 1. Rate limiting zone: 10MB memory zone storing IPs, max 10 requests/sec
+  limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+
+  upstream node_cluster {
+    least_conn; # Least connections balancing algorithm
+    server app1:3000 max_fails=3 fail_timeout=10s;
+    server app2:3000 max_fails=3 fail_timeout=10s;
+  }
+
+  server {
+    listen 443 ssl http2;
+    server_name api.myapp.com;
+
+    ssl_certificate /etc/ssl/certs/fullchain.pem;
+    ssl_certificate_key /etc/ssl/private/privkey.pem;
+
+    location / {
+      # Apply rate limit with burst buffer of 20 requests
+      limit_req zone=api_limit burst=20 nodelay;
+
+      proxy_pass http://node_cluster;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection &#39;upgrade&#39;;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+  }
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 8: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>8. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering system design frameworks, capacity calculations, load balancers, caching economics, and high availability SLAs.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What are the 4 core steps to navigate a System Design interview?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The four steps are: 1) Understand the problem and clarify requirements (functional, non-functional like DAU, latency, availability); 2) High-level design and capacity calculations (estimating QPS, storage, and drawing the initial end-to-end architecture); 3) Deep dive into core bottlenecks (data modeling, sharding, caching strategies, and concurrency); and 4) Fault tolerance and wrap-up (addressing single points of failure, failovers, and monitoring)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is the difference between Vertical Scaling and Horizontal Scaling?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Vertical scaling (Scale-Up) means adding more hardware resources—CPU, RAM, or faster SSDs—to a single server instance. Horizontal scaling (Scale-Out) means adding more commodity server instances behind a load balancer. While vertical scaling is simpler because it avoids distributed coordination, horizontal scaling provides true elastic scalability and fault tolerance."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is the difference between a Reverse Proxy and a Forward Proxy?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Forward Proxy acts on behalf of clients to access the external internet, often used in corporate firewalls to filter employee web traffic and hide client IPs. A Reverse Proxy acts on behalf of backend servers to receive incoming public internet requests, performing SSL termination, load balancing, compression, and protecting internal application instances from direct public exposure."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is a Content Delivery Network (CDN) and why is it used?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A CDN is a globally distributed network of proxy edge servers that cache static assets (JavaScript, CSS, images, video) close to end users geographically. It minimizes round-trip network latency by terminating TCP and TLS connections near the client, decreases origin backend server load, and absorbs DDoS traffic at the edge."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What does 'Three Nines' vs 'Four Nines' availability mean in practice?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Three Nines (99.9% uptime) permits approximately 8 hours and 45 minutes of total downtime per year. Four Nines (99.99% uptime) permits only about 52 minutes of downtime per year. Moving from three to four nines requires eliminating single points of failure, multi-AZ active-active failover, and automated zero-downtime deployment pipelines."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What is the difference between Layer 4 and Layer 7 Load Balancing?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Layer 4 load balancing operates at the transport layer (TCP/UDP), routing raw network packets based solely on IP and port without decrypting or inspecting payload data; it is ultra-fast with minimal CPU overhead. Layer 7 balancing operates at the application layer (HTTP/HTTPS), parsing headers, cookies, and URIs to perform intelligent path-based routing and SSL termination, but incurs higher computational overhead."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is Consistent Hashing and why is it preferred over simple modulo hashing?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "With simple modulo hashing (`hash(key) % N`), adding or removing a single node changes the denominator, causing virtually 100% of keys to remap and inducing catastrophic cache misses. Consistent Hashing maps nodes and keys to an abstract 360-degree hash ring. When a server is added or removed, only \(1/N\) of keys are relocated, preventing cache thundering herds."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">How do you calculate QPS and Peak QPS given Daily Active Users?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "First, multiply DAU by the average actions per user per day to get Total Daily Requests. Divide that by 86,400 seconds (rounded to \(10^5\) for mental math) to get Average QPS. To account for traffic spikes, peak hours, and diurnal usage curves, we typically multiply Average QPS by a factor of 2 to 3 to derive Peak QPS for infrastructure provisioning."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is a Pull CDN vs a Push CDN and when do you use each?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Pull CDN (Origin Pull) fetches assets lazily from the origin server on the first user request and caches them at the edge until TTL expiration; it is the industry standard for web applications and blogs. A Push CDN requires the application or CI pipeline to upload all assets directly to CDN storage beforehand; it is ideal for massive static software updates or video releases."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is SSL/TLS Termination at the Load Balancer level and what are its trade-offs?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "TLS termination decrypts incoming HTTPS traffic at the load balancer or reverse proxy, passing unencrypted HTTP requests to backend application servers across a private VPC network. It relieves application servers of CPU-intensive cryptographic handshakes and centralizes SSL certificate management, but requires trusting the internal network security boundary."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the difference between an Active-Passive and an Active-Active failover architecture?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In Active-Passive, all traffic is handled by a primary instance while a secondary standby instance remains idle, replicating state. If the primary fails, a heartbeat detector triggers a failover to the standby. In Active-Active, two or more instances actively process requests in parallel; if one node fails, load balancers simply route 100% of traffic to the remaining healthy nodes with zero downtime."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the Least Connections algorithm and when does it outperform Round Robin?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Least Connections tracks the active TCP or HTTP connections on each server and sends new requests to the instance with the lowest active load. It significantly outperforms Round Robin when requests have highly variable processing durations—such as large file uploads, complex analytical SQL queries, or persistent real-time WebSocket connections."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What are Liveness and Readiness probes in distributed systems?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Liveness probe checks if an application process is alive or deadlocked (e.g., event loop frozen); if it fails, the orchestrator restarts the container. A Readiness probe checks if the application is fully initialized and ready to receive traffic (e.g., database connection pool established, caches warmed); if it fails, load balancers temporarily stop routing traffic to it without restarting."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the order of magnitude latency difference between RAM and NVMe SSD access?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "RAM access takes approximately 100 nanoseconds, while sequential reads from an NVMe SSD take approximately 100 to 200 microseconds. This means RAM is roughly 1,000 to 2,000 times faster than the fastest SSDs, which is why caching frequently accessed data in Redis or memory is essential for high-throughput sub-10ms applications."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">How does Anycast DNS routing work to deliver traffic to the nearest CDN Edge PoP?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Anycast assigns the exact same public IP address to hundreds of servers across diverse geographical data centers worldwide. Internet Service Providers use Border Gateway Protocol (BGP) routing tables to automatically direct client packets along the shortest network hop path, seamlessly routing each user to their nearest physical edge PoP without client configuration."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How do you invalidate cached assets across a distributed CDN at scale?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "There are three primary strategies: 1) URL versioning/cache-busting (`app.a1b2c3.js`) with immutable `Cache-Control: max-age=31536000`, which requires zero invalidation API calls; 2) Surrogate-Key / Cache-Tags (associating responses with tags like `tag: product-42` and purging by tag via API); and 3) Explicit path purging, which is rate-limited and slower to propagate."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is Virtual Node replication in Consistent Hashing and what problem does it solve?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "With a small number of physical nodes, random hash placement creates non-uniform distribution across the ring (hot spots where one server owns 60% of the key space). Virtual Nodes assign 100–300 virtual tokens per physical node across the ring. This balances key distribution evenly and ensures load is shed uniformly when a node crashes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is the Thundering Herd problem in load balancing and reverse proxies?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Thundering Herd occurs when hundreds of concurrent requests arrive simultaneously for a newly expired cache item. Instead of waiting for one thread to refresh the cache, all 500 requests bypass the cache and hammer the database simultaneously, causing connection exhaustion and CPU spikes. Reverse proxies solve this using request collapsing (`proxy_cache_use_stale updating`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">How do you eliminate Single Points of Failure (SPOF) at the Load Balancer layer itself?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "We pair load balancers in an Active-Passive high-availability cluster using VRRP (Virtual Router Redundancy Protocol) with Keepalived, sharing a floating virtual IP (VIP). If the active LB fails health checks, the passive LB claims the VIP within seconds. In cloud environments, managed LBs (like AWS ALB) automatically distribute across multiple availability zones under an Anycast DNS hostname."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you structure the trade-off conversation when choosing between consistency and availability?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I frame it around domain business impact: for financial ledger systems or inventory checkout where double-spending creates catastrophic liability, Strong Consistency (CP) is mandatory even if transactions fail during network partitions. For social media feeds, likes, or analytics where momentary stale data is harmless, High Availability (AP) with eventual consistency provides far superior user experience."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

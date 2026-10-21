@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 11: Authentication and Authorization | Full-Stack Interview Guide</title>
+  <meta name="description" content="Complete guide to Web Authentication & Authorization: JWT internals, access & refresh token rotation, bcrypt/argon2 hashing, RBAC, OAuth 2.0, PKCE, secure cookies, and OWASP defenses.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="11">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART II — Node.js and Express.js Backend Engineering</div>
+          <h1 class="chapter-title">Chapter 11: Authentication and Authorization</h1>
+          <p class="chapter-lead">
+            Securing the backend perimeter: Authentication vs Authorization, Stateful Sessions vs Stateless JWTs, Access & Refresh Token Rotation with Reuse Detection, Argon2id/Bcrypt password hashing, Role-Based Access Control (RBAC), OAuth 2.0 / OIDC, and OWASP defenses against CSRF, XSS, and BOLA.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Security & Identity</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Distinguish <strong>Authentication</strong> (Who are you?) from <strong>Authorization</strong> (What can you access?).</li>
+            <li>Compare Stateful Cookie Sessions vs Stateless JSON Web Tokens across scalability, revocation, and overhead.</li>
+            <li>Master the cryptographic structure of JWTs: Header, Payload, Signature, and symmetric (HMAC) vs asymmetric (RSA/ECDSA) keys.</li>
+            <li>Implement the <strong>Refresh Token Rotation (RTR)</strong> pattern with automatic Token Reuse Detection.</li>
+            <li>Hash passwords securely using <strong>Argon2id</strong> or <strong>bcrypt</strong> with salt rounds and timing-attack protection.</li>
+            <li>Enforce Role-Based Access Control (RBAC) and prevent Broken Object-Level Authorization (BOLA/IDOR).</li>
+            <li>Understand OAuth 2.0 grant types: Authorization Code Flow with PKCE for single-page and mobile apps.</li>
+            <li>Configure secure cookies using <code>HttpOnly</code>, <code>Secure</code>, <code>SameSite</code>, and <code>__Host-</code> prefixes.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Authentication vs Authorization: The Architectural Boundary</h2>
+        <p>
+          In engineering interviews, conflating these two terms is an immediate red flag:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Dimension</th>
+                <th>Authentication (AuthN)</th>
+                <th>Authorization (AuthZ)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Core Question</strong></td>
+                <td><em>"Who are you?"</em> (Identity verification)</td>
+                <td><em>"What permissions do you have?"</em> (Access control)</td>
+              </tr>
+              <tr>
+                <td><strong>Input Artifacts</strong></td>
+                <td>Passwords, MFA OTP codes, biometric passkeys, magic links, OAuth tokens.</td>
+                <td>Roles (Admin, Editor), permission scopes (`tasks:write`), Access Control Lists (ACL).</td>
+              </tr>
+              <tr>
+                <td><strong>HTTP Failure Code</strong></td>
+                <td><strong>401 Unauthorized</strong> (Credentials missing, expired, or invalid).</td>
+                <td><strong>403 Forbidden</strong> (Identity known, but access denied for this resource).</td>
+              </tr>
+              <tr>
+                <td><strong>Execution Order</strong></td>
+                <td>Always executed first in the middleware pipeline.</td>
+                <td>Executed after authentication succeeds.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <h2>2. Stateful Sessions vs Stateless JWTs</h2>
+        <p>
+          How should an application remember a user between HTTP requests?
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Stateful Sessions (Cookies + Redis/DB)</th>
+                <th>Stateless JWTs (JSON Web Tokens)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Server State</strong></td>
+                <td><strong>Stateful:</strong> The server stores a session row in Redis/DB; the browser holds an opaque session ID cookie.</td>
+                <td><strong>Stateless:</strong> The server stores nothing; the client holds the cryptographically signed token containing user claims.</td>
+              </tr>
+              <tr>
+                <td><strong>Immediate Revocation</strong></td>
+                <td><strong>Instantaneous:</strong> Deleting the session key in Redis instantly logs out the user on their next request.</td>
+                <td><strong>Hard:</strong> A signed JWT remains valid until its <code>exp</code> timestamp passes, unless you maintain a centralized token blacklist.</td>
+              </tr>
+              <tr>
+                <td><strong>Horizontal Scalability</strong></td>
+                <td>Requires a centralized fast shared cache (Redis) across all load-balanced application instances.</td>
+                <td>Any server instance possessing the secret key can verify the token without checking a database.</td>
+              </tr>
+              <tr>
+                <td><strong>Bandwidth Overhead</strong></td>
+                <td>Minimal (a short 32-byte session ID cookie).</td>
+                <td>Larger (~500B–2KB) sent on every HTTP request header.</td>
+              </tr>
+              <tr>
+                <td><strong>Best Use Case</strong></td>
+                <td>Monolithic web applications, traditional server-rendered apps, banking/financial systems requiring instant kill switches.</td>
+                <td>Distributed microservices, mobile apps, third-party API integrations, cross-domain SSO.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <h2>3. JWT Internals: Structure and Cryptography</h2>
+        <p>
+          A JSON Web Token consists of three base64url-encoded strings separated by periods (<code>.</code>):
+        </p>
+        <p><code>eyJhbGciOiJIUzI1Ni...</code> . <code>eyJzdWIiOiIxMjM0...</code> . <code>TJVA95OrM7E2cBab30RM...</code></p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++-------------------------------------------------------------------------------+
+| 1. HEADER (Base64Url)                                                         |
+|    { "alg": "HS256", "typ": "JWT" }                                           |
++-------------------------------------------------------------------------------+
+                                        .
++-------------------------------------------------------------------------------+
+| 2. PAYLOAD (Base64Url)                                                        |
+|    { "sub": "u_987", "role": "admin", "iat": 1713689200, "exp": 1713690100 }  |
++-------------------------------------------------------------------------------+
+                                        .
++-------------------------------------------------------------------------------+
+| 3. SIGNATURE (Cryptographic Hash)                                             |
+|    HMACSHA256( base64Url(Header) + "." + base64Url(Payload), secretKey )     |
++-------------------------------------------------------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 11.1: Cryptographic Anatomy of a JSON Web Token</div>
+        </div>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">🚨 Crucial Interview Rule: JWTs are NOT Encrypted!</div>
+          <p>
+            A standard JWT is <strong>Signed, NOT Encrypted</strong>. Anyone can decode the base64 payload at <code>jwt.io</code> and read the contents in plaintext. Never put sensitive data (passwords, credit card numbers, or social security numbers) inside a JWT payload! The signature guarantees only that the payload has not been tampered with.
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <h2>4. Access Token & Refresh Token Rotation (RTR)</h2>
+        <p>
+          How do we balance security (short lifespan) with user convenience (not forcing users to re-login every 15 minutes)? We use the dual-token architecture:
+        </p>
+        <ul>
+          <li><strong>Access Token:</strong> Short-lived (10–15 minutes). Sent in the <code>Authorization: Bearer &lt;token&gt;</code> header. Used to authenticate API requests. Stored in memory on client.</li>
+          <li><strong>Refresh Token:</strong> Long-lived (7–30 days). Stored in an <strong><code>HttpOnly, Secure, SameSite=Strict</code> cookie</strong>. Used solely to request a new Access Token.</li>
+        </ul>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+Client                                                                 Backend API
+  |                                                                         |
+  | 1. POST /api/auth/login (email, password) ----------------------------> |
+  | <--- 2. Returns Access Token (JSON) + Refresh Token 1 (HttpOnly Cookie)-|
+  |                                                                         |
+  | [15 Minutes Pass: Access Token Expires]                                 |
+  |                                                                         |
+  | 3. POST /api/auth/refresh (Cookie: Refresh Token 1) -------------------> |
+  |                                                                         |
+  |    * Backend verifies Refresh Token 1 in Database                       |
+  |    * Backend INVALIDATES Refresh Token 1                                |
+  |    * Backend generates Refresh Token 2 & new Access Token               |
+  |                                                                         |
+  | <--- 4. Returns new Access Token + Refresh Token 2 (New Cookie) ------- |
+          </div>
+          <div class="diagram-caption">Figure 11.2: Refresh Token Rotation Flow with One-Time Use Tokens</div>
+        </div>
+
+        <h3>Automatic Token Reuse Detection</h3>
+        <p>
+          What if an attacker steals Refresh Token 1? If either the legitimate user or the attacker uses Refresh Token 1 after it has already been rotated, the server detects <strong>Token Reuse</strong>! The server immediately revokes the <em>entire token family</em>, terminating all active sessions for that user across all devices, thwarting the attacker.
+        </p>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <h2>5. Password Hashing: Bcrypt vs Argon2id</h2>
+        <p>
+          Storing plaintext passwords is gross negligence. Using fast hashing algorithms like MD5, SHA-1, or SHA-256 is equally dangerous: modern GPUs can compute over 10 billion SHA-256 hashes per second, cracking passwords via brute force in minutes.
+        </p>
+        <p>
+          We use <strong>Adaptive, Memory-Hard, Slow Hashing Functions</strong>:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Algorithm</th>
+                <th>Design Principle</th>
+                <th>Work Factors</th>
+                <th>OWASP Recommendation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Argon2id</strong></td>
+                <td>Winner of the Password Hashing Competition. Highly resistant to GPU and dedicated ASIC hardware attacks by utilizing memory hardness.</td>
+                <td>Configured via: Memory (m), Iterations (t), Parallelism (p).</td>
+                <td><strong>#1 Preferred Choice (Current Gold Standard).</strong></td>
+              </tr>
+              <tr>
+                <td><strong>Bcrypt</strong></td>
+                <td>Based on the Blowfish cipher. Computationally expensive; automatically incorporates a 128-bit cryptographically secure random salt.</td>
+                <td>Configured via: Cost Factor / Work Factor (e.g. 12 rounds = \(2^{12} = 4096\) iterations).</td>
+                <td>Widely accepted enterprise standard. Max password length limit: 72 bytes.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <pre><code class="language-javascript">// Bcrypt Password Hashing in Node.js
+const bcrypt = require('bcrypt');
+
+async function hashPassword(plainPassword) {
+  // Salt rounds: 12 is optimal balance between security (~250ms) and CPU
+  const saltRounds = 12;
+  return bcrypt.hash(plainPassword, saltRounds);
+}
+
+async function verifyPassword(plainPassword, storedHash) {
+  // bcrypt.compare prevents timing attacks automatically
+  return bcrypt.compare(plainPassword, storedHash);
+}</code></pre>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <h2>6. Role-Based Access Control (RBAC) Middleware</h2>
+        <p>
+          Authorization ensures authenticated users can only perform actions permitted by their role:
+        </p>
+
+        <pre><code class="language-typescript">// src/middlewares/rbac.middleware.ts
+import { Request, Response, NextFunction } from "express";
+import { AppError } from "../utils/AppError";
+
+type Role = "admin" | "manager" | "member";
+
+export function authorizeRoles(...allowedRoles: Role[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    // req.user is populated by authenticateJwt middleware
+    if (!req.user) {
+      return next(new AppError("Authentication required", 401));
+    }
+
+    if (!allowedRoles.includes(req.user.role as Role)) {
+      return next(new AppError("You do not have permission to perform this action", 403));
+    }
+
+    next();
+  };
+}
+
+// Usage in Routes:
+// router.delete('/users/:id', authenticateJwt, authorizeRoles('admin'), userController.deleteUser);</code></pre>
+
+        <hr>
+
+        <!-- Section 7 -->
+        <h2>7. OAuth 2.0 and OpenID Connect (OIDC)</h2>
+        <p>
+          OAuth 2.0 is an <strong>Authorization framework</strong> that allows third-party applications to obtain limited access to an HTTP service on behalf of a resource owner (e.g., "Sign in with Google" or allowing Spotify to access Facebook friends).
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++---------------------+     1. User Clicks "Sign in with Google"     +--------------------+
+|                     | -------------------------------------------> |   Google OAuth     |
+|   Client Browser    | <---- 2. Redirects to Google Login Screen --- |    Auth Server     |
+|                     |                                              +--------------------+
+|                     | ---- 3. User Consents; Google Redirects ---> |
+|                     |      with temporary Authorization Code       |
+|                     |      (GET /callback?code=abc123xyz)          |
++---------------------+                                              |
+          |                                                          |
+          v                                                          |
++---------------------+     4. Backend Exchanges Code + Secret       |
+|  Node.js Backend    | -------------------------------------------> |
+|  (Express App)      | <--- 5. Returns Access Token & ID Token ---- |
++---------------------+
+          </div>
+          <div class="diagram-caption">Figure 11.3: OAuth 2.0 Authorization Code Flow</div>
+        </div>
+
+        <h3>PKCE (Proof Key for Code Exchange)</h3>
+        <p>
+          In Single-Page Applications (React) or Mobile Apps, the client cannot securely store a <code>client_secret</code>. OAuth 2.0 mandates <strong>PKCE</strong> (RFC 7636): the client generates a random <code>code_verifier</code> and sends its hashed <code>code_challenge</code> during the initial request, proving ownership during token exchange without a client secret.
+        </p>
+
+        <hr>
+
+        <!-- Section 8: Interview Questions and Answers -->
+        <section class="interview-section">
+          <h2>Interview Questions and Answers</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            20 comprehensive interview questions testing authentication mechanics, token security, cookie flags, password hashing, and OWASP defenses.
+          </p>
+
+          <div class="qa-toolbar">
+            <div class="qa-filter-btns">
+              <button class="qa-filter-btn active" data-filter="all">All (20)</button>
+              <button class="qa-filter-btn" data-filter="beginner">Beginner</button>
+              <button class="qa-filter-btn" data-filter="intermediate">Intermediate</button>
+              <button class="qa-filter-btn" data-filter="advanced">Advanced</button>
+              <button class="qa-filter-btn" data-filter="scenario">Scenario</button>
+            </div>
+            <button class="qa-toggle-all" type="button">Expand All Answers</button>
+          </div>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What is the difference between Authentication and Authorization?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Authentication is verifying who a user is—confirming their identity through credentials like passwords, MFA codes, or OAuth tokens. Authorization is determining what permissions or resources that authenticated user is allowed to access—such as checking if a user has an 'admin' role. If authentication fails, the server returns 401 Unauthorized; if authorization fails, it returns 403 Forbidden."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">Where should JWTs be stored on the client side: `localStorage` or `HttpOnly` cookies? Why?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Refresh tokens should always be stored in an `HttpOnly, Secure, SameSite=Strict` cookie. `localStorage` is accessible to any JavaScript running on the page, meaning a single Cross-Site Scripting (XSS) vulnerability or malicious npm dependency can steal the user's token directly. An `HttpOnly` cookie cannot be read or stolen by JavaScript via `document.cookie`, providing robust defense against credential theft. Short-lived access tokens can be held in JavaScript memory."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">What is Refresh Token Rotation (RTR), and how does Token Reuse Detection prevent hijacking?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Refresh Token Rotation ensures every refresh token can be used exactly once. When a client exchanges a refresh token for a new access token, the server invalidates that refresh token and issues a brand-new one. If an attacker and a legitimate user attempt to use the same refresh token, the server detects token reuse: it immediately revokes the entire token family, killing all active sessions for that user across all devices."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">Why is salting passwords necessary? What are Rainbow Tables?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A salt is a cryptographically random string generated uniquely for each user and concatenated with their password before hashing. A Rainbow Table is a precomputed lookup table containing millions of pre-hashed common passwords. Without salts, two users with the password 'Password123' have identical hashes, allowing attackers to look up hashes in seconds. Salting ensures identical passwords produce entirely different hashes, rendering rainbow tables useless."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What is the JWT `alg: "none"` vulnerability, and how do you protect against it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The JWT specification permits an algorithm header of `none` for unsecured tokens. If a backend library naively trusts the `alg` specified in the incoming header, an attacker can modify their role to 'admin', set `\"alg\": \"none\"`, delete the signature, and the server would accept the token! We protect against this by explicitly specifying allowed algorithms in verification options: `jwt.verify(token, secret, { algorithms: ['HS256'] })`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">What do the `HttpOnly`, `Secure`, and `SameSite` cookie flags do?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`HttpOnly` blocks client-side JavaScript (`document.cookie`) from reading the cookie, mitigating XSS token theft. `Secure` mandates that the cookie is transmitted exclusively over encrypted HTTPS connections, preventing unencrypted plaintext sniffing. `SameSite=Strict` prevents the cookie from being sent in cross-site requests (like following third-party links or embedded forms), defending against Cross-Site Request Forgery (CSRF)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">What is Broken Object-Level Authorization (BOLA / IDOR)? Give an example.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "BOLA (formerly Insecure Direct Object References) occurs when an endpoint accesses objects directly based on user-supplied IDs (e.g. `GET /api/documents/987`) without verifying whether the authenticated user actually owns that document. An authenticated attacker simply changes `987` to `988` to view another user's private data. We prevent it by always scoping queries to the authenticated user ID: `WHERE id = $1 AND user_id = $2`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">What is the difference between Symmetric (HMAC SHA-256) and Asymmetric (RSA/ECDSA) JWT signing?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Symmetric signing (HS256) uses a single shared secret key for both signing and verification; every microservice that validates the token must possess the secret key, meaning if one service is compromised, an attacker can forge tokens. Asymmetric signing (RS256 / ES256) uses a Private/Public key pair: the Auth Server signs tokens using its private key, and all downstream microservices verify tokens using the public key without ever being able to forge them."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">Scenario: How do you implement a secure "Forgot Password" reset flow?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "1. Generate a cryptographically secure random token: `crypto.randomBytes(32).toString('hex')`. 2. Hash the token using SHA-256 and store the hash in the database with a 15-minute expiration and a `used: false` flag. 3. Email the UNHASHED token in a link: `https://app.com/reset?token=...`. 4. When the user submits a new password, hash the incoming token and look it up in the database. 5. If valid and unexpired, update the password, mark the token as used, and invalidate all existing active refresh tokens."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is Account Enumeration, and how do you prevent it on login and registration endpoints?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Account enumeration occurs when an API inadvertently reveals whether an email is registered—for example, returning 'User does not exist' vs 'Incorrect password', or varying response times due to skipping password hashing when a user is not found. We prevent it by: 1. Returning identical generic error messages: 'Invalid email or password'. 2. Ensuring constant-time execution by running a dummy password hash even if the user is not found in the database."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">How does OAuth 2.0 PKCE (Proof Key for Code Exchange) prevent authorization code interception attacks?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In public clients (SPAs and mobile apps), an authorization code redirected to the browser could be intercepted by malicious browser extensions or URI schemes. With PKCE, the client generates a random secret (`code_verifier`) and sends its SHA-256 hash (`code_challenge`) during the initial authorization request. When exchanging the code for a token, the client must send the original unhashed `code_verifier`. The auth server verifies that `SHA256(verifier) === challenge`, ensuring only the entity that initiated the request can redeem the code."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the difference between OAuth 2.0 and OpenID Connect (OIDC)?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "OAuth 2.0 is designed exclusively for Authorization: it issues an Access Token that allows an application to access APIs on the user's behalf, but tells the application nothing about who the user is. OpenID Connect is an identity layer built on top of OAuth 2.0 designed for Authentication: it introduces an `ID Token` (a signed JWT containing user profile claims like email, name, and subject ID)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: A user reports their laptop was stolen. If your architecture uses stateless JWT access tokens with a 15-minute expiration, how do you revoke their access immediately?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "1. Immediately delete or revoke all active Refresh Tokens for that user in the database, preventing new access tokens from being issued. 2. To revoke in-flight access tokens before their 15-minute expiry, publish the user's ID or token JTI (JWT ID) to a distributed in-memory Redis Blacklist with a TTL matching the token's remaining lifespan. The authentication middleware checks Redis for blacklisted tokens on protected requests."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is a Timing Attack in authentication, and how does `crypto.timingSafeEqual()` prevent it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Standard string comparison (`a === b`) short-circuits and returns false on the very first mismatched character. An attacker measuring response times with microsecond precision can deduce characters one by one. `crypto.timingSafeEqual()` compares two buffers in constant time without short-circuiting, taking the exact same number of clock cycles regardless of where differences occur, completely preventing timing attacks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">How does Multi-Factor Authentication (MFA) using TOTP (Time-Based One-Time Password) work mathematically?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Under RFC 6238, during MFA setup, the server and the user's authenticator app share a secret base32 key (often via QR code). Every 30 seconds, both compute a time step counter: `T = floor(current_unix_time / 30)`. Both generate an HMAC-SHA1 hash using the secret key and the counter `T`, truncate the hash, and extract a 6-digit number. Because both calculate the same mathematical algorithm using synchronized clocks, the 6-digit code matches without sending SMS or network requests."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What are the standard claims found in a JWT payload (`sub`, `iat`, `exp`, `iss`, `aud`)?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`sub` (Subject): unique user or entity ID. `iat` (Issued At): timestamp when token was created. `exp` (Expiration Time): Unix timestamp after which token is invalid. `iss` (Issuer): entity that issued the token (e.g. auth.mycompany.com). `aud` (Audience): intended recipient service for the token."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is the `__Host-` cookie prefix, and what security guarantees does it enforce?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The `__Host-` prefix is a browser security standard. A cookie named with `__Host-` (e.g. `__Host-session`) is rejected by modern browsers unless: 1. It is set with the `Secure` flag over HTTPS. 2. It has `Path=/`. 3. It omits the `Domain` attribute (meaning it cannot be read, overwritten, or spoofed by subdomains like `blog.example.com`), completely closing subdomain injection attacks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is Session Fixation, and how do modern authentication frameworks prevent it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Session Fixation occurs when an attacker obtains a valid unauthenticated session ID, tricks a victim into using it (via a malicious link or header), and waits for the victim to log in. If the server keeps the same session ID post-login, the attacker now possesses an authenticated session. Modern frameworks prevent this by always regenerating a brand-new session ID upon successful login (`req.session.regenerate()`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">Scenario: Why is using bcrypt with synchronous methods (`bcrypt.hashSync`) a critical performance anti-pattern in Node.js web servers?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Bcrypt is intentionally slow and CPU-heavy. Running `bcrypt.hashSync` with 12 rounds takes ~250ms of pure synchronous CPU computation directly on the main JavaScript thread, completely blocking the Event Loop. During that quarter-second, no other HTTP requests can be accepted or processed. Asynchronous `bcrypt.hash` offloads the computation to libuv's background thread pool, leaving the main thread responsive."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">What is JWKS (JSON Web Key Set), and how do microservices use it to verify RS256 JWTs?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A JWKS is a standard endpoint (e.g. `https://auth.company.com/.well-known/jwks.json`) hosted by the Authorization Server that publishes its current public keys in JSON format. When microservices receive an RS256 token, they inspect the `kid` (Key ID) header in the JWT, fetch and cache the corresponding public key from the JWKS endpoint, and verify the signature without requiring static shared secrets or redeployments when keys are rotated."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 29: Web Application Security | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master full-stack web application security: OWASP Top 10, SQL and NoSQL injection, BOLA/IDOR authorization defense, SSRF mitigations, Helmet security headers, and secrets hygiene.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="29">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VI — API Design, Security, and Software Engineering</div>
+          <h1 class="chapter-title">Chapter 29: Web Application Security &amp; OWASP Top 10</h1>
+          <p class="chapter-lead">
+            Defending production full-stack systems: OWASP Top 10 breakdown, SQL and NoSQL query injection prevention, Broken Object Level Authorization (BOLA/IDOR), Server-Side Request Forgery (SSRF) network boundaries, Helmet.js security headers, XSS sanitization pipelines, CSRF mitigations, and secret management hygiene.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">OWASP Top 10</span>
+              <span class="meta-pill">BOLA &amp; SSRF Defense</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Analyze the <strong>OWASP Top 10 Vulnerabilities</strong> with direct application to Node.js, Express, React, PostgreSQL, and MongoDB.</li>
+            <li>Prevent <strong>SQL Injection</strong> via parameterized prepared statements and prevent <strong>NoSQL Operator Injection</strong> in MongoDB using input sanitization and strict schema enforcement.</li>
+            <li>Eliminate <strong>Broken Object Level Authorization (BOLA/IDOR)</strong>—the most prevalent API attack vector—using database-level ownership scoping.</li>
+            <li>Construct robust network firewalls to thwart <strong>Server-Side Request Forgery (SSRF)</strong> and prevent exfiltration of cloud metadata (AWS IMDSv2).</li>
+            <li>Implement layered defense against <strong>XSS</strong> using React JSX auto-escaping, DOMPurify, and Content Security Policy (CSP) nonces.</li>
+            <li>Harden Express HTTP response headers using <strong>Helmet.js</strong> (HSTS, CSP, X-Frame-Options, X-Content-Type-Options).</li>
+            <li>Implement enterprise <strong>Secrets Management</strong> to prevent accidental credential leakage in Git repositories or Docker layers.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The OWASP Top 10 for Full-Stack Engineers</h2>
+        <p>
+          The <strong>Open Web Application Security Project (OWASP)</strong> curates the definitive industry consensus on the most critical security risks facing modern web applications.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>OWASP Risk</th>
+                <th>Full-Stack Real-World Attack Scenario</th>
+                <th>Primary Defense Mechanism</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>A01: Broken Access Control (BOLA/IDOR)</strong></td>
+                <td>A logged-in user changes the URL or body from <code>/invoices/101</code> to <code>/invoices/102</code> and reads another customer’s private invoice.</td>
+                <td>Always scope data access queries by authenticated user ID (<code>WHERE id = $1 AND account_id = $2</code>) and enforce server-side RBAC/ABAC.</td>
+              </tr>
+              <tr>
+                <td><strong>A02: Cryptographic Failures</strong></td>
+                <td>Storing passwords in plaintext or MD5/SHA-1; transmitting tokens over unencrypted HTTP; storing sensitive tokens in <code>localStorage</code>.</td>
+                <td>Use Argon2id or Bcrypt (cost factor \(\ge 12\)); enforce HTTPS with HSTS; store auth tokens in <code>HttpOnly; Secure; SameSite=Strict</code> cookies.</td>
+              </tr>
+              <tr>
+                <td><strong>A03: Injection (SQL, NoSQL, Command)</strong></td>
+                <td>Submitting <code>' OR 1=1 --</code> into login forms, or passing <code>{"$ne": null}</code> to bypass MongoDB authentication.</td>
+                <td>Parameterized prepared statements in SQL, strict Zod schema validation, and sanitizing NoSQL queries (<code>express-mongo-sanitize</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>A04: Insecure Design</strong></td>
+                <td>Password reset workflows without rate limiting allowing credential brute-forcing; lack of multi-factor authentication (MFA) on admin accounts.</td>
+                <td>Threat modeling during architecture; strict rate limiting (Redis token buckets) on sensitive endpoints; anti-enumeration responses.</td>
+              </tr>
+              <tr>
+                <td><strong>A05: Security Misconfiguration</strong></td>
+                <td>Leaving default credentials; enabling directory listing; exposing verbose stack traces in production 500 error responses; missing security headers.</td>
+                <td>Automated infrastructure-as-code hardening; use Helmet.js; disable <code>X-Powered-By</code>; sanitize error envelopes in production.</td>
+              </tr>
+              <tr>
+                <td><strong>A06: Vulnerable &amp; Outdated Components</strong></td>
+                <td>Using npm packages containing known Remote Code Execution (RCE) or prototype pollution vulnerabilities.</td>
+                <td>Automated vulnerability scanning in CI/CD (<code>npm audit</code>, Snyk, Dependabot); pinning lockfiles with <code>npm ci</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>A07: Identification &amp; Auth Failures</strong></td>
+                <td>Credential stuffing, session fixation, permitting weak passwords ("123456"), or issuing JWTs without signature verification.</td>
+                <td>Enforce strong password rules (zxcvbn); MFA; cryptographic signature verification with RS256/EdDSA; Refresh Token Rotation (RTR).</td>
+              </tr>
+              <tr>
+                <td><strong>A08: Software &amp; Data Integrity Failures</strong></td>
+                <td>Loading untrusted third-party CDN scripts without Subresource Integrity (SRI); insecure deserialization of untrusted serialized objects.</td>
+                <td>Use SRI hash checks (<code>integrity="sha384-..."</code>); avoid <code>eval()</code> or unsafe deserialization libraries; verify webhook HMAC signatures.</td>
+              </tr>
+              <tr>
+                <td><strong>A09: Security Logging &amp; Monitoring Failures</strong></td>
+                <td>Failing to log failed login spikes or privilege escalations; logging plaintext credit cards or passwords in application logs.</td>
+                <td>Structured JSON logging (Pino); correlation IDs; real-time alert thresholds on 401/403 surges; strict PII masking/redaction filters.</td>
+              </tr>
+              <tr>
+                <td><strong>A10: Server-Side Request Forgery (SSRF)</strong></td>
+                <td>An endpoint accepts a user-provided image URL and downloads AWS metadata from <code>http://169.254.169.254/latest/meta-data/</code>.</td>
+                <td>Resolve DNS, validate IP addresses against private/loopback/cloud metadata subnets before dispatching outbound requests.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Injection Attacks: SQL vs. NoSQL vs. Command Injection</h2>
+        
+        <h3>SQL Injection (SQLi)</h3>
+        <p>
+          SQL Injection occurs when untrusted user input is directly concatenated or interpolated into a raw SQL query string, allowing the attacker to break out of the data context into the command execution context.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">JavaScript: Vulnerable vs Secure SQL Queries</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// ❌ VULNERABLE: Direct string interpolation
+const query = `SELECT * FROM users WHERE email = &#39;${req.body.email}&#39; AND password = &#39;${req.body.password}&#39;`;
+// Attacker enters email: &quot;admin@site.com' --&quot;
+// Resulting query: SELECT * FROM users WHERE email = 'admin@site.com' --' AND password = '...'
+// The rest of the query is commented out! The attacker logs in without a password!
+
+// ✅ SECURE: Parameterized Prepared Statements
+const safeQuery = &#39;SELECT id, email, password_hash FROM users WHERE email = $1&#39;;
+const { rows } = await pool.query(safeQuery, [req.body.email]);
+// The database engine compiles the SQL query plan FIRST, treating $1 strictly as literal data.</code></pre>
+        </div>
+
+        <h3>NoSQL Operator Injection</h3>
+        <p>
+          MongoDB applications using Mongoose or native drivers are immune to traditional SQL injection, but are highly vulnerable to <strong>NoSQL Operator Injection</strong>. When an Express application accepts parsed JSON objects directly from <code>req.body</code>, an attacker can submit MongoDB query operators (such as <code>$gt</code>, <code>$ne</code>, or <code>$regex</code>) instead of primitive strings.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">JavaScript: MongoDB NoSQL Injection Exploit and Defense</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// Vulnerable Express Endpoint
+app.post(&#39;/api/login&#39;, async (req, res) =&gt; {
+  // Attacker sends JSON payload:
+  // { &quot;username&quot;: &quot;admin&quot;, &quot;password&quot;: { &quot;$ne&quot;: null } }
+  
+  // ❌ VULNERABLE: req.body.password is parsed as an Object: { $ne: null }
+  const user = await User.findOne({
+    username: req.body.username,
+    password: req.body.password // Query becomes: password is NOT null!
+  });
+
+  if (user) {
+    // Attacker bypasses authentication completely!
+    res.json({ token: generateJwt(user) });
+  }
+});
+
+// ✅ DEFENSE LAYER 1: Strict Runtime Type Validation with Zod
+import { z } from &#39;zod&#39;;
+
+const LoginSchema = z.object({
+  username: z.string().min(3).max(50),
+  password: z.string().min(8) // Must be a string! Objects are rejected with 422!
+});
+
+// ✅ DEFENSE LAYER 2: Sanitize keys starting with &#39;$&#39; or containing &#39;.&#39;
+import mongoSanitize from &#39;express-mongo-sanitize&#39;;
+app.use(mongoSanitize()); // Strips all $ operators from req.body, req.query, req.params</code></pre>
+        </div>
+
+        <h3>Command Injection</h3>
+        <p>
+          Command injection occurs when user input is passed directly to system shells (e.g., using Node’s <code>child_process.exec</code>).
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">JavaScript: Command Injection Vulnerability &amp; Fix</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { exec, execFile } from &#39;child_process&#39;;
+
+// ❌ VULNERABLE: Spawns a shell (/bin/sh or cmd.exe)
+// Attacker enters domain: &quot;google.com; rm -rf /&quot;
+exec(`ping -c 4 ${req.body.domain}`, (err, stdout) =&gt; { ... });
+
+// ✅ SECURE: execFile bypasses shell interpretation entirely!
+// Arguments are passed as an array directly to the OS binary
+execFile(&#39;ping&#39;, [&#39;-c&#39;, &#39;4&#39;, req.body.domain], (err, stdout) =&gt; { ... });</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Broken Object Level Authorization (BOLA / IDOR)</h2>
+        <p>
+          <strong>Broken Object Level Authorization (BOLA)</strong>, formerly classified as Insecure Direct Object Reference (IDOR), is ranked by OWASP as the <strong>#1 most critical vulnerability in modern APIs</strong>.
+        </p>
+        <p>
+          It occurs when an endpoint exposes an internal database identifier (e.g., <code>/api/documents/5920</code>) and fails to verify whether the authenticated user has explicit rights to access that specific document instance.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: BOLA / IDOR Attack Vector</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Attacker (User 99)                   API Endpoint                    PostgreSQL DB
+      |                                   |                                |
+      |-- GET /invoices/101 ------------&gt;|                                |
+      |   Authorization: Bearer User99    |                                |
+      |                                   |-- SELECT * FROM invoices       |
+      |                                   |   WHERE id = 101; -----------&gt;|
+      |                                   |&lt;-- Returns Invoice (User 42)---|
+      |                                   | (No owner verification!)       |
+      |&lt;-- 200 OK [Victim's Invoice!] ----|                                |
+      | (Attacker accesses private data belonging to User 42)              |</code></pre>
+        </div>
+
+        <h3>The Architectural Defense: Scoped Database Queries</h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Enforcing Tenant &amp; Ownership Scoping</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import { Request, Response } from &#39;express&#39;;
+import { pool } from &#39;../db&#39;;
+
+export async function getInvoice(req: Request, res: Response): Promise&lt;void&gt; {
+  const invoiceId = req.params.id;
+  const currentUserId = req.user.id; // Extracted from verified JWT session
+
+  // ✅ ALWAYS scope queries by BOTH the target entity ID AND the authenticated owner ID
+  const query = `
+    SELECT id, amount, status, created_at
+    FROM invoices
+    WHERE id = $1 AND user_id = $2;
+  `;
+
+  const { rows } = await pool.query(query, [invoiceId, currentUserId]);
+
+  if (rows.length === 0) {
+    // Return 404 instead of 403 to prevent resource enumeration attacks!
+    res.status(404).json({
+      type: &#39;https://api.myapp.com/errors/not-found&#39;,
+      title: &#39;Resource Not Found&#39;,
+      status: 404,
+      detail: &#39;No invoice found with the specified identifier.&#39;
+    });
+    return;
+  }
+
+  res.json({ data: rows[0] });
+}</code></pre>
+        </div>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">💡 Security Best Practice: 404 vs 403 on IDOR Probing</div>
+          <p>
+            When an authenticated user attempts to access an object they do not own, returning <code>403 Forbidden</code> confirms to the attacker that the object exists (enabling resource enumeration). Returning <code>404 Not Found</code> denies the attacker any intelligence regarding whether the ID is valid or invalid.
+          </p>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Server-Side Request Forgery (SSRF)</h2>
+        <p>
+          <strong>Server-Side Request Forgery (SSRF)</strong> occurs when a web backend is persuaded by an attacker to fetch a remote resource (e.g., an image avatar URL, a PDF export link, or an incoming webhook health check) without restricting the destination address.
+        </p>
+        <p>
+          Attackers exploit SSRF to scan internal network infrastructure (bypassing public firewalls) or query cloud provider instance metadata endpoints to steal IAM credentials:
+        </p>
+        <ul>
+          <li><strong>AWS Metadata:</strong> <code>http://169.254.169.254/latest/meta-data/iam/security-credentials/</code></li>
+          <li><strong>GCP Metadata:</strong> <code>http://metadata.google.internal/computeMetadata/v1/</code></li>
+          <li><strong>Internal Services:</strong> <code>http://localhost:6379</code> (Redis), <code>http://10.0.0.5:9200</code> (Elasticsearch).</li>
+        </ul>
+
+        <h3>Defense: Validating Resolved IP Addresses (Anti-DNS Rebinding)</h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Production Safe HTTP Fetcher Defending Against SSRF</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import dns from &#39;dns/promises&#39;;
+import http from &#39;http&#39;;
+import https from &#39;https&#39;;
+import ipaddr from &#39;ipaddr.js&#39;;
+import { URL } from &#39;url&#39;;
+
+export async function isSafeUrl(targetUrl: string): Promise&lt;boolean&gt; {
+  try {
+    const parsed = new URL(targetUrl);
+
+    // 1. Only permit standard HTTP/HTTPS protocols
+    if (parsed.protocol !== &#39;http:&#39; &amp;&amp; parsed.protocol !== &#39;https:&#39;) {
+      return false;
+    }
+
+    // 2. Resolve DNS hostname to raw IP addresses
+    const lookup = await dns.lookup(parsed.hostname, { all: true });
+    if (lookup.length === 0) return false;
+
+    for (const record of lookup) {
+      const addr = ipaddr.parse(record.address);
+      const range = addr.range();
+
+      // 3. Reject loopback (127.0.0.1), private (RFC 1918), linkLocal (169.254.x.x AWS), broadcast
+      const blockedRanges = [
+        &#39;loopback&#39;,
+        &#39;private&#39;,
+        &#39;linkLocal&#39;,
+        &#39;carrierGradeNat&#39;,
+        &#39;uniqueLocal&#39;,
+        &#39;unspecified&#39;
+      ];
+
+      if (blockedRanges.includes(range)) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Cross-Site Scripting (XSS) &amp; Modern Content Security Policy (CSP)</h2>
+        <p>
+          <strong>Cross-Site Scripting (XSS)</strong> occurs when malicious JavaScript code is injected into a trusted web application and executed within the victim’s browser context.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>XSS Variety</th>
+                <th>Execution Flow</th>
+                <th>Primary Mitigation</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Stored XSS (Persistent)</strong></td>
+                <td>Malicious script payload is permanently stored in the database (e.g., user bio or comment) and executed whenever other users view the page.</td>
+                <td>Contextual HTML entity encoding; DOMPurify sanitization of user HTML; strict database validation.</td>
+              </tr>
+              <tr>
+                <td><strong>Reflected XSS (Non-Persistent)</strong></td>
+                <td>Payload is reflected immediately off the web server in an error message or search query parameter (e.g., <code>?q=&lt;script&gt;...&lt;/script&gt;</code>).</td>
+                <td>Auto-escaping template engines (React JSX auto-escapes string bindings); HTTP response encoding.</td>
+              </tr>
+              <tr>
+                <td><strong>DOM-based XSS</strong></td>
+                <td>Attack payload is executed entirely in client-side JavaScript by unsafe DOM manipulation (e.g., reading <code>location.hash</code> into <code>element.innerHTML</code>).</td>
+                <td>Avoid <code>dangerouslySetInnerHTML</code>, <code>innerHTML</code>, <code>document.write</code>, or <code>eval()</code>. Use <code>textContent</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Why React Protects Against XSS (And Where It Fails)</h3>
+        <p>
+          By default, React JSX automatically escapes all string variables rendered inside curly braces <code>{userInput}</code>. React converts characters like <code>&lt;</code>, <code>&gt;</code>, <code>&amp;</code>, and <code>"</code> into safe HTML entities, rendering them harmlessly as text.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: React XSS Traps and DOMPurify Remediation</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import DOMPurify from &#39;dompurify&#39;;
+
+// ❌ VULNERABLE: Bypasses React&#39;s built-in escaping!
+function DangerousComment({ rawHtml }: { rawHtml: string }) {
+  return &lt;div dangerouslySetInnerHTML={{ __html: rawHtml }} /&gt;;
+}
+
+// ❌ VULNERABLE: javascript: protocol pseudo-URLs in anchor tags!
+function MaliciousLink({ userUrl }: { userUrl: string }) {
+  // If userUrl = &quot;javascript:alert(document.cookie)&quot;
+  return &lt;a href={userUrl}&gt;Click my profile!&lt;/a&gt;;
+}
+
+// ✅ SECURE: DOMPurify Sanitization
+function SafeComment({ rawHtml }: { rawHtml: string }) {
+  const sanitized = DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: [&#39;b&#39;, &#39;i&#39;, &#39;em&#39;, &#39;strong&#39;, &#39;a&#39;],
+    ALLOWED_ATTR: [&#39;href&#39;]
+  });
+  return &lt;div dangerouslySetInnerHTML={{ __html: sanitized }} /&gt;;
+}</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Hardening Express with Security Headers (Helmet.js)</h2>
+        <p>
+          HTTP response headers instruct browsers how to enforce sandboxing, SSL transport, and cross-origin resource sharing. The industry standard package for securing Express headers is <strong>Helmet.js</strong>.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Production Express Helmet Configuration</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import express from &#39;express&#39;;
+import helmet from &#39;helmet&#39;;
+
+const app = express();
+
+// Configure comprehensive security headers
+app.use(
+  helmet({
+    // 1. Content Security Policy (CSP): Restricts origins of scripts/styles/images
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: [&quot;&#39;self&#39;&quot;],
+        scriptSrc: [&quot;&#39;self&#39;&quot;],
+        styleSrc: [&quot;&#39;self&#39;&quot;, &quot;&#39;unsafe-inline&#39;&quot;],
+        imgSrc: [&quot;&#39;self&#39;&quot;, &#39;data:&#39;, &#39;https://images.myapp.com&#39;],
+        connectSrc: [&quot;&#39;self&#39;&quot;, &#39;https://api.myapp.com&#39;],
+        objectSrc: [&quot;&#39;none&#39;&quot;],
+        upgradeInsecureRequests: []
+      }
+    },
+    // 2. Strict-Transport-Security (HSTS): Forces HTTPS for 1 year including subdomains
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true
+    },
+    // 3. Prevent MIME-type sniffing (CVE-2018-1002200)
+    noSniff: true,
+    // 4. Clickjacking defense: prevents embedding inside iframes
+    frameguard: {
+      action: &#39;deny&#39;
+    },
+    // 5. Hide X-Powered-By: Express header
+    hidePoweredBy: true
+  })
+);</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Secrets Management &amp; Environment Hygiene</h2>
+        <p>
+          Accidental exposure of database passwords, API tokens, and JWT private keys in public git repositories or client-side bundles is an catastrophic vulnerability.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Anti-Pattern</th>
+                <th>Why It Is Fatal</th>
+                <th>Production Industry Standard</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Committing <code>.env</code> files to Git</td>
+                <td>Git history is immutable; credentials remain in public git commits indefinitely even if deleted in a later commit.</td>
+                <td>Add <code>.env*</code> to <code>.gitignore</code>; inject environment variables at runtime via AWS Secrets Manager, HashiCorp Vault, or Doppler.</td>
+              </tr>
+              <tr>
+                <td>Prefixing private secrets with <code>REACT_APP_</code> or <code>VITE_</code></td>
+                <td>Bundlers (Vite, Webpack) embed any variable prefixed with <code>VITE_</code> or <code>NEXT_PUBLIC_</code> into client JavaScript bundles!</td>
+                <td>Only expose truly public keys (like Stripe Publishable Key). Backend secrets (Stripe Secret Key, DB URLs) must NEVER enter frontend code.</td>
+              </tr>
+              <tr>
+                <td>Baking secrets into Docker image layers</td>
+                <td>Anyone with access to the Docker image can run <code>docker history</code> or inspect image layers to extract secrets.</td>
+                <td>Use multi-stage Docker builds with BuildKit secrets (<code>RUN --mount=type=secret...</code>).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 8 -->
+        <h2>8. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Building an SSRF-Safe URL Downloader</h3>
+        <p>
+          <strong>Scenario:</strong> Write an asynchronous helper function <code>safeDownloadImage(url)</code> that enforces HTTP/HTTPS, resolves the hostname, verifies it does not belong to private RFC 1918 or AWS link-local IP blocks, and terminates if dangerous.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">import dns from &#39;dns/promises&#39;;
+import ipaddr from &#39;ipaddr.js&#39;;
+
+export async function validateRemoteUrl(rawUrl: string): Promise&lt;string&gt; {
+  const parsed = new URL(rawUrl);
+
+  if (![&#39;http:&#39;, &#39;https:&#39;].includes(parsed.protocol)) {
+    throw new Error(&#39;Only HTTP and HTTPS protocols are permitted.&#39;);
+  }
+
+  const addresses = await dns.lookup(parsed.hostname, { all: true });
+  if (addresses.length === 0) {
+    throw new Error(&#39;Unable to resolve hostname.&#39;);
+  }
+
+  for (const { address } of addresses) {
+    const parsedIp = ipaddr.parse(address);
+    const range = parsedIp.range();
+
+    if ([&#39;private&#39;, &#39;loopback&#39;, &#39;linkLocal&#39;, &#39;uniqueLocal&#39;].includes(range)) {
+      throw new Error(`Forbidden target IP range: ${range} (${address})`);
+    }
+  }
+
+  return rawUrl;
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: NoSQL Query Sanitizer Middleware</h3>
+        <p>
+          <strong>Scenario:</strong> Create a lightweight Express middleware function from scratch (without external dependencies) that recursively scans <code>req.body</code> and strips any object keys that begin with <code>$</code>.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">import { Request, Response, NextFunction } from &#39;express&#39;;
+
+function sanitizeObject(obj: any): any {
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeObject);
+  }
+  if (obj !== null &amp;&amp; typeof obj === &#39;object&#39;) {
+    const clean: Record&lt;string, any&gt; = {};
+    for (const [key, value] of Object.entries(obj)) {
+      // Strip any key starting with &#39;$&#39; or containing &#39;.&#39;
+      if (!key.startsWith(&#39;$&#39;) &amp;&amp; !key.includes(&#39;.&#39;)) {
+        clean[key] = sanitizeObject(value);
+      }
+    }
+    return clean;
+  }
+  return obj;
+}
+
+export function customNoSqlSanitizer(req: Request, res: Response, next: NextFunction): void {
+  if (req.body) req.body = sanitizeObject(req.body);
+  if (req.query) req.query = sanitizeObject(req.query);
+  if (req.params) req.params = sanitizeObject(req.params);
+  next();
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 9: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>9. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering OWASP Top 10 vulnerabilities, BOLA/IDOR prevention, NoSQL operator injection, SSRF defense, and security headers.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is SQL Injection and how do parameterized queries completely prevent it?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "SQL Injection occurs when untrusted user input is directly concatenated into a SQL statement, allowing user input to be parsed as executable commands. Parameterized queries completely prevent this because the database pre-compiles the SQL syntax and query execution plan before binding the parameters. User input is treated strictly as literal data, making it impossible to alter the query logic."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is NoSQL Injection and how does it manifest in MongoDB applications?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "NoSQL injection occurs when query operators (like `$ne`, `$gt`, or `$regex`) are passed in place of primitive values via JSON request bodies. For instance, passing `{\"username\": \"admin\", \"password\": {\"$ne\": null}}` into a Mongoose `findOne()` query bypasses password verification entirely because the condition 'password is not null' evaluates to true."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is Broken Object Level Authorization (BOLA / IDOR)?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "BOLA (formerly IDOR) is ranked as the #1 API security vulnerability by OWASP. It happens when an endpoint accepts a resource identifier (such as `/orders/123`) from the client and retrieves that object without verifying if the authenticated user has legitimate ownership or authorization rights to access that specific record."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is Stored XSS vs Reflected XSS?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Stored XSS occurs when a malicious script is permanently persisted in the server database (e.g., in a blog comment or user profile) and executed whenever other users view that record. Reflected XSS is non-persistent: the payload is delivered via a crafted URL or form parameter and reflected immediately by the server in an error message or search page."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">How does React protect against Cross-Site Scripting (XSS) by default?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "React JSX automatically escapes all string expressions rendered inside curly braces `{userInput}` before inserting them into the DOM. Characters like `<` and `>` are converted to HTML entities, rendering them harmlessly as text rather than executable script tags. React only becomes vulnerable if developers bypass this using `dangerouslySetInnerHTML` or dynamic `javascript:` pseudo-protocols in links."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">How do you effectively prevent BOLA / IDOR at the database query level?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Never trust client-supplied identifiers alone. Always scope database queries by both the requested resource ID and the authenticated user's ID extracted from the verified session or JWT: `SELECT * FROM orders WHERE id = $1 AND user_id = $2`. In multi-tenant systems, scope by `tenant_id` or utilize PostgreSQL Row-Level Security (RLS)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is Server-Side Request Forgery (SSRF) and how do attackers exploit it in cloud environments?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "SSRF occurs when an attacker tricks a backend server into making HTTP requests to internal or unauthorized destinations. In cloud environments like AWS, attackers submit the link-local metadata IP `http://169.254.169.254/latest/meta-data/` into webhook or avatar upload endpoints to harvest temporary EC2 IAM credentials."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">How do you defend against SSRF and DNS Rebinding attacks?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "We validate URLs by strictly allowing only HTTP/HTTPS protocols, resolving the hostname to its underlying IP address, and checking that the IP does not belong to private (RFC 1918), loopback (127.0.0.1), or link-local (169.254.x.x) ranges. To defend against DNS Rebinding, we pin the verified IP address and issue the HTTP request directly to that IP rather than re-resolving the hostname."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is Content Security Policy (CSP) and how does it mitigate XSS?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "CSP is an HTTP response header that restricts which domain origins can execute scripts, load stylesheets, or connect websockets in the browser. Even if an attacker injects an inline `<script>` tag into HTML, a strict CSP with nonces or `script-src 'self'` prevents the browser from executing that untrusted code."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What security headers does Helmet.js configure and what do they do?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Helmet configures essential HTTP headers: HSTS (`Strict-Transport-Security`) enforces HTTPS connections; `X-Content-Type-Options: nosniff` stops MIME-type sniffing; `X-Frame-Options: DENY` defends against clickjacking; `Content-Security-Policy` restricts asset execution; and `hidePoweredBy` removes the `X-Powered-By: Express` signature to reduce reconnaissance."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Why are REST APIs using Authorization: Bearer <token> headers immune to CSRF?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "CSRF relies on the browser automatically attaching ambient session cookies when a user visits a malicious website making a cross-origin request. Authorization headers (`Bearer <token>`) are never automatically attached by browsers. A third-party malicious website cannot read the client's token or forge the custom Authorization header due to CORS restrictions."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the difference between SameSite=Lax and SameSite=Strict cookies?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`SameSite=Strict` completely blocks the cookie from being sent on any cross-site request, even when a user clicks a regular link from an external email. `SameSite=Lax` allows cookies to be sent on top-level safe GET navigations (clicking a link), but blocks cookies on cross-site POST requests or images, providing strong CSRF defense while preserving standard user navigation flows."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">How do you sanitize user-submitted HTML in React without introducing XSS vulnerabilities?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Use DOMPurify to strip dangerous elements (like `<script>`, `<iframe>`, `<object>`) and remove dangerous attributes (like `onload`, `onerror`, or `href='javascript:...'`). Pass the sanitized string into `dangerouslySetInnerHTML`, and configure DOMPurify with an explicit whitelist of safe tags and attributes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">Why should you avoid child_process.exec when executing system utilities in Node.js?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`exec()` spawns an operating system shell (`/bin/sh` or `cmd.exe`) to run the command string. If user input contains shell metacharacters like `;`, `&&`, or `|`, it enables arbitrary command execution. Instead, use `execFile()` or `spawn()` with an array of arguments, which calls the binary directly without a shell."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is AWS IMDSv2 and how does it mitigate SSRF attacks targeting EC2 metadata?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "IMDSv1 allowed simple GET requests to `http://169.254.169.254/latest/meta-data/`. IMDSv2 requires a session-oriented flow: clients must first send a `PUT` request with an `X-aws-ec2-metadata-token-ttl-seconds` header to obtain a session token, and then supply that token in an `X-aws-ec2-metadata-token` header. Most SSRF vulnerabilities can only perform simple GET requests, effectively blocking them."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How do you implement Subresource Integrity (SRI) and what attack does it thwart?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "SRI prevents compromised third-party CDNs from injecting malicious JavaScript into your site. We add cryptographic hashes to script tags: `<script src=\"https://cdn.com/lib.js\" integrity=\"sha384-...\" crossorigin=\"anonymous\"></script>`. The browser verifies the downloaded file's hash before execution; if the CDN was tampered with, the script is rejected."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is Prototype Pollution in JavaScript and how does it lead to Remote Code Execution (RCE)?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Prototype pollution happens when an application recursively merges untrusted JSON objects containing `__proto__` or `constructor.prototype` keys into existing objects. This pollutes `Object.prototype`, adding properties to every object in the V8 runtime. If a backend library later checks for optional config properties (like `shell: true`), the injected property can trigger RCE."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">How do you prevent Timing Attacks during password verification and HMAC signature comparison?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Standard string equality (`===`) exits early on the first mismatched character, allowing attackers to measure microscopic response time differences to deduce valid signatures or hashes character-by-character. To eliminate this side-channel attack, we use `crypto.timingSafeEqual()`, which compares buffers in constant time regardless of where differences occur."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What are the security implications of CORS misconfigurations (Access-Control-Allow-Origin: *)?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Setting `Access-Control-Allow-Origin: *` allows any public website to make AJAX requests and read API responses. While acceptable for public read-only assets, if coupled with credentials (`Access-Control-Allow-Credentials: true`), browsers reject wildcard origins. However, poorly implemented backends that dynamically reflect the request's `Origin` header allow arbitrary malicious sites to make authenticated requests and steal private data."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you securely manage production secrets in containerized Node.js applications?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Never bake secrets into `.env` files or Docker image layers. Instead, utilize secret managers (like AWS Secrets Manager, Vault, or Doppler) and inject credentials as runtime environment variables into Kubernetes pods or ECS containers. In CI/CD, use automated secret scanners (like GitGuardian or Trivy) to block commits containing API keys."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

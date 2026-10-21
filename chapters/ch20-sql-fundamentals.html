@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 20: SQL Fundamentals | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master SQL and PostgreSQL fundamentals: logical query execution order, INNER/LEFT/RIGHT/FULL joins, Window Functions, CTEs, Recursive CTEs, GROUP BY/HAVING, and three-valued NULL logic.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="20">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART IV — PostgreSQL and SQL</div>
+          <h1 class="chapter-title">Chapter 20: SQL Fundamentals (PostgreSQL)</h1>
+          <p class="chapter-lead">
+            PostgreSQL query mastery: internal logical query execution pipeline, deep relational joins, Common Table Expressions (CTEs), Recursive CTE tree traversal, analytical Window Functions (ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD), and three-valued NULL logic.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">PostgreSQL Dialect</span>
+              <span class="meta-pill">Window Functions</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand the strict <strong>Logical Query Execution Order</strong> and why column aliases defined in <code>SELECT</code> cannot be referenced in <code>WHERE</code>.</li>
+            <li>Master all join types: <code>INNER JOIN</code>, <code>LEFT JOIN</code>, <code>RIGHT JOIN</code>, <code>FULL OUTER JOIN</code>, <code>CROSS JOIN</code>, and hierarchical Self-Joins.</li>
+            <li>Differentiate group filtering with <code>HAVING</code> from row filtering with <code>WHERE</code>.</li>
+            <li>Construct clean, readable queries using <strong>Common Table Expressions (CTEs)</strong> and traverse organizational hierarchies using <strong>Recursive CTEs</strong>.</li>
+            <li>Apply analytical <strong>Window Functions</strong> (<code>ROW_NUMBER()</code>, <code>DENSE_RANK()</code>, <code>LEAD()</code>, <code>LAG()</code>) over partitions without collapsing rows.</li>
+            <li>Navigate SQL's <strong>Three-Valued Logic</strong> (<code>TRUE</code>, <code>FALSE</code>, <code>UNKNOWN</code>), the <code>col = NULL</code> fallacy, and defensive functions like <code>COALESCE</code> and <code>NULLIF</code>.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Logical Query Execution Order</h2>
+        <p>
+          In standard SQL, you write queries starting with <code>SELECT</code>. However, the SQL database engine executes clauses in a completely different, strict logical sequence:
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 20.1: Logical Query Execution Order</div>
+          <pre class="diagram-content">
+[ Written SQL Syntax Order ]                 [ Logical Database Engine Execution Order ]
+1. SELECT                                   1. FROM &amp; JOIN (Locate &amp; merge base tables)
+2. FROM                                     2. WHERE (Filter individual base rows)
+3. JOIN ... ON                              3. GROUP BY (Aggregate rows into groups)
+4. WHERE                                    4. HAVING (Filter aggregated groups)
+5. GROUP BY                                 5. SELECT (Evaluate expressions &amp; column aliases)
+6. HAVING                                   6. DISTINCT (Deduplicate output tuples)
+7. ORDER BY                                 7. ORDER BY (Sort final result set)
+8. LIMIT / OFFSET                           8. LIMIT / OFFSET (Slice pagination window)
+          </pre>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">💡 Why <code>WHERE annual_salary &gt; 100000</code> Fails with "Column Does Not Exist"</div>
+          <p>
+            Consider this common bug:
+          </p>
+          <pre><code class="language-sql">-- FAILS: ERROR: column "annual_salary" does not exist!
+SELECT first_name, (hourly_rate * 2080) AS annual_salary
+FROM employees
+WHERE annual_salary &gt; 100000;</code></pre>
+          <p>
+            Because <code>WHERE</code> (Step 2) executes <em>before</em> <code>SELECT</code> (Step 5), the column alias <code>annual_salary</code> has not yet been computed or registered when the filter evaluates. You must either repeat the expression in the <code>WHERE</code> clause or wrap the query in a CTE / subquery. Conversely, <code>ORDER BY</code> (Step 7) runs <em>after</em> <code>SELECT</code>, so referencing <code>annual_salary</code> in <code>ORDER BY</code> works perfectly.
+          </p>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Relational Joins in Depth</h2>
+        <p>
+          Relational joins combine columns from one or more tables based on a related attribute.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Join Type</th>
+                <th>Venn Diagram Behavior</th>
+                <th>Handling of Unmatched Rows</th>
+                <th>Typical Real-World Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>INNER JOIN</strong></td>
+                <td>Intersection (\(A \cap B\))</td>
+                <td>Unmatched rows from either table are completely discarded.</td>
+                <td>Fetching orders that have an associated registered user.</td>
+              </tr>
+              <tr>
+                <td><strong>LEFT OUTER JOIN</strong></td>
+                <td>All of \(A\), plus matching \(B\)</td>
+                <td>Preserves all rows from left table; columns from right table are populated with <code>NULL</code> if no match exists.</td>
+                <td>Listing all users, including those who have never placed an order.</td>
+              </tr>
+              <tr>
+                <td><strong>RIGHT OUTER JOIN</strong></td>
+                <td>All of \(B\), plus matching \(A\)</td>
+                <td>Preserves all rows from right table; unmatched left columns filled with <code>NULL</code>.</td>
+                <td>Rarely used; conventionally rewritten as a <code>LEFT JOIN</code> for readability.</td>
+              </tr>
+              <tr>
+                <td><strong>FULL OUTER JOIN</strong></td>
+                <td>Union (\(A \cup B\))</td>
+                <td>Preserves all rows from both tables. Missing sides are filled with <code>NULL</code>.</td>
+                <td>Reconciling payment records against bank statement imports.</td>
+              </tr>
+              <tr>
+                <td><strong>CROSS JOIN</strong></td>
+                <td>Cartesian Product (\(A \times B\))</td>
+                <td>Every row of \(A\) is paired with every row of \(B\) (produces \(N \times M\) rows).</td>
+                <td>Generating matrix grids (e.g. all shirt sizes \(\times\) all available colors).</td>
+              </tr>
+              <tr>
+                <td><strong>Self Join</strong></td>
+                <td>Table joined to itself</td>
+                <td>Joins a table to an aliased instance of itself via foreign key.</td>
+                <td>Hierarchical models: matching employees to their manager in the same <code>employees</code> table.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (Relational Joins Demonstration)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- 1. INNER JOIN: Only customers who placed orders
+SELECT c.name, o.id AS order_id, o.total_amount
+FROM customers c
+INNER JOIN orders o ON c.id = o.customer_id;
+
+-- 2. LEFT JOIN: Find customers who have NEVER placed an order (Anti-Join Pattern)
+SELECT c.name, c.email
+FROM customers c
+LEFT JOIN orders o ON c.id = o.customer_id
+WHERE o.id IS NULL; -- Filters to left-side rows with no right-side match!
+
+-- 3. Self Join: Organizational hierarchy (Employee -> Manager)
+SELECT 
+  e.name AS employee_name,
+  COALESCE(m.name, 'Top Executive / CEO') AS manager_name
+FROM employees e
+LEFT JOIN employees m ON e.manager_id = m.id;</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Aggregations: WHERE vs HAVING</h2>
+        <p>
+          A frequent interview question tests whether candidates understand the fundamental difference between <code>WHERE</code> and <code>HAVING</code>:
+        </p>
+        <ul>
+          <li><strong><code>WHERE</code>:</strong> Filters <em>individual rows</em> before any grouping or aggregation takes place. Cannot use aggregate functions (e.g. <code>WHERE SUM(amount) &gt; 100</code> is a syntax error).</li>
+          <li><strong><code>HAVING</code>:</strong> Filters <em>grouped buckets</em> after <code>GROUP BY</code> has aggregated rows. Evaluates aggregate functions (e.g. <code>HAVING COUNT(*) &gt;= 5</code>).</li>
+        </ul>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- Query: Find active customers who spent more than $500 in 2024
+SELECT 
+  c.id, 
+  c.name, 
+  COUNT(o.id) AS total_orders,
+  SUM(o.total_amount) AS total_spent
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+WHERE o.created_at &gt;= '2024-01-01' AND o.status = 'COMPLETED' -- Filters rows prior to grouping
+GROUP BY c.id, c.name
+HAVING SUM(o.total_amount) &gt; 500 -- Filters aggregated groups
+ORDER BY total_spent DESC;</code></pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Common Table Expressions (CTEs) & Recursive CTEs</h2>
+        <p>
+          A <strong>Common Table Expression (CTE)</strong> is a temporary named result set defined within the scope of a single <code>SELECT</code>, <code>INSERT</code>, <code>UPDATE</code>, or <code>DELETE</code> statement using the <code>WITH</code> keyword.
+        </p>
+
+        <h3>4.1 Standard CTEs vs Subqueries</h3>
+        <p>
+          Unlike deeply nested subqueries that read inside-out, CTEs read top-to-bottom like linear code, vastly improving maintainability. In PostgreSQL 12+, CTEs are automatically inlined by the query planner unless marked with <code>WITH ... AS MATERIALIZED</code>.
+        </p>
+
+        <h3>4.2 Recursive CTEs: Traversing Hierarchical Trees</h3>
+        <p>
+          A <strong>Recursive CTE</strong> references itself. It is essential for querying recursive structures like category trees, threaded comment replies, bill of materials, and organizational charts.
+        </p>
+        <p>
+          A recursive CTE consists of:
+        </p>
+        <ol>
+          <li><strong>Anchor Member:</strong> The base query that initiates the recursion (e.g., finding the top-level CEO).</li>
+          <li><code>UNION ALL</code></li>
+          <li><strong>Recursive Member:</strong> References the CTE name to join children to their parents until no more rows are returned.</li>
+        </ol>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (Recursive CTE for Category Tree)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- Schema: categories (id, name, parent_id)
+WITH RECURSIVE category_tree AS (
+  -- 1. ANCHOR MEMBER: Find root categories (no parent)
+  SELECT 
+    id, 
+    name, 
+    parent_id, 
+    1 AS depth,
+    name::TEXT AS breadcrumb_path
+  FROM categories
+  WHERE parent_id IS NULL
+
+  UNION ALL
+
+  -- 2. RECURSIVE MEMBER: Find children by joining onto previous iteration
+  SELECT 
+    c.id, 
+    c.name, 
+    c.parent_id, 
+    ct.depth + 1,
+    ct.breadcrumb_path || ' &gt; ' || c.name
+  FROM categories c
+  JOIN category_tree ct ON c.parent_id = ct.id
+)
+SELECT id, name, depth, breadcrumb_path
+FROM category_tree
+ORDER BY breadcrumb_path;
+
+/* Expected Output:
+ id | name        | depth | breadcrumb_path
+----+-------------+-------+---------------------------------------
+  1 | Electronics |     1 | Electronics
+  4 | Laptops     |     2 | Electronics > Laptops
+  8 | Gaming      |     3 | Electronics > Laptops > Gaming
+  2 | Furniture   |     1 | Furniture
+  5 | Chairs      |     2 | Furniture > Chairs
+*/</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Analytical Window Functions</h2>
+        <p>
+          Standard aggregate functions (like <code>SUM</code> or <code>AVG</code>) collapse multiple rows into a single summary row.
+        </p>
+        <p>
+          <strong>Window Functions</strong> perform calculations across a set of table rows that are related to the current row, <strong>without collapsing the rows</strong>! Each original row retains its separate identity while displaying the computed aggregate or ranking value.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Function</th>
+                <th>Behavior</th>
+                <th>Tie-Breaking Example (Values: 100, 100, 80)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>ROW_NUMBER()</code></td>
+                <td>Assigns a unique sequential integer starting at 1 to every row within the partition.</td>
+                <td>1, 2, 3 (No duplicates; ties broken arbitrarily)</td>
+              </tr>
+              <tr>
+                <td><code>RANK()</code></td>
+                <td>Assigns the same rank to identical values, but <strong>leaves gaps</strong> in the sequence.</td>
+                <td>1, 1, 3 (Rank 2 is skipped!)</td>
+              </tr>
+              <tr>
+                <td><code>DENSE_RANK()</code></td>
+                <td>Assigns the same rank to identical values, <strong>without leaving gaps</strong>.</td>
+                <td>1, 1, 2 (No ranks skipped)</td>
+              </tr>
+              <tr>
+                <td><code>LAG(col, offset)</code></td>
+                <td>Accesses data from a previous row in the partition without a self-join.</td>
+                <td>Used for period-over-period growth comparisons.</td>
+              </tr>
+              <tr>
+                <td><code>LEAD(col, offset)</code></td>
+                <td>Accesses data from a subsequent row in the partition.</td>
+                <td>Used for forward-looking churn predictions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (Window Functions in Action)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- Query: Find the Top 2 Highest-Earning Employees in each Department
+WITH ranked_employees AS (
+  SELECT 
+    id,
+    name,
+    department_id,
+    salary,
+    -- Partition resets ranking for each department independently!
+    DENSE_RANK() OVER (
+      PARTITION BY department_id 
+      ORDER BY salary DESC
+    ) as salary_rank
+  FROM employees
+)
+SELECT name, department_id, salary, salary_rank
+FROM ranked_employees
+WHERE salary_rank &lt;= 2;
+
+-- Query: Calculate Month-over-Month Revenue Growth using LAG()
+SELECT 
+  month,
+  revenue,
+  LAG(revenue, 1) OVER (ORDER BY month) AS prev_month_revenue,
+  ROUND(
+    ((revenue - LAG(revenue, 1) OVER (ORDER BY month)) / LAG(revenue, 1) OVER (ORDER BY month)) * 100, 
+    2
+  ) AS mom_growth_pct
+FROM monthly_sales;</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Three-Valued Logic and NULL Pitfalls</h2>
+        <p>
+          In SQL, <code>NULL</code> does not represent zero, an empty string, or false. <code>NULL</code> represents <strong>unknown or missing information</strong>.
+        </p>
+        <p>
+          Because of this, SQL operates on <strong>Three-Valued Logic (3VL)</strong>: every Boolean expression evaluates to <code>TRUE</code>, <code>FALSE</code>, or <code>UNKNOWN</code>.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Expression</th>
+                <th>Result</th>
+                <th>Why It Behaves This Way</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>NULL = NULL</code></td>
+                <td><strong>UNKNOWN</strong></td>
+                <td>Two unknown values cannot be asserted as equal.</td>
+              </tr>
+              <tr>
+                <td><code>NULL &lt;&gt; NULL</code></td>
+                <td><strong>UNKNOWN</strong></td>
+                <td>Two unknown values cannot be asserted as unequal.</td>
+              </tr>
+              <tr>
+                <td><code>val IS NULL</code></td>
+                <td><strong>TRUE</strong> (if val is null)</td>
+                <td><code>IS NULL</code> is the only valid way to check for nullity.</td>
+              </tr>
+              <tr>
+                <td><code>TRUE AND UNKNOWN</code></td>
+                <td><strong>UNKNOWN</strong></td>
+                <td>Outcome depends on what the unknown value resolves to.</td>
+              </tr>
+              <tr>
+                <td><code>FALSE AND UNKNOWN</code></td>
+                <td><strong>FALSE</strong></td>
+                <td>Regardless of unknown, <code>FALSE AND anything</code> is always <code>FALSE</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ The Deadly <code>NOT IN (subquery with NULL)</code> Trap</div>
+          <p>
+            If a subquery returns even a <strong>single NULL value</strong>, a <code>NOT IN</code> condition will evaluate to <code>UNKNOWN</code> for every row, resulting in <strong>zero rows returned</strong>:
+          </p>
+          <pre><code class="language-sql">-- If orders has ANY row where customer_id IS NULL:
+-- "c.id NOT IN (1, 2, NULL)" expands to:
+-- "(c.id != 1) AND (c.id != 2) AND (c.id != NULL)"
+-- Since (c.id != NULL) is UNKNOWN, the whole expression becomes UNKNOWN!
+SELECT * FROM customers WHERE id NOT IN (SELECT customer_id FROM orders); -- Returns EMPTY SET!
+
+-- FIX 1: Use NOT EXISTS (Safe against NULLs)
+SELECT * FROM customers c WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);
+
+-- FIX 2: Filter out NULLs in subquery
+SELECT * FROM customers WHERE id NOT IN (SELECT customer_id FROM orders WHERE customer_id IS NOT NULL);</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-tag">Exercise 20.1</span>
+            <span class="exercise-title">Calculate 7-Day Moving Averages with Window Framing</span>
+          </div>
+          <p>
+            <strong>Problem:</strong> You are given a table <code>daily_revenue(date DATE, amount NUMERIC)</code>. Write a query to compute the 7-day trailing moving average revenue for each day using window frames (including the current day and the preceding 6 days).
+          </p>
+          <details class="solution-details">
+            <summary class="solution-toggle">View Complete Solution</summary>
+            <div class="solution-body">
+              <div class="code-block" data-lang="sql">
+                <div class="code-header">
+                  <span class="code-lang">sql</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-sql">SELECT 
+  date,
+  amount,
+  -- Window Frame: ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+  ROUND(
+    AVG(amount) OVER (
+      ORDER BY date
+      ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ), 
+    2
+  ) AS moving_avg_7d
+FROM daily_revenue
+ORDER BY date;</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 8: Interview Questions -->
+        <section class="qa-section" id="interview-questions">
+          <h2>8. Chapter-Specific Interview Questions and Answers</h2>
+          <p>
+            Master these 20 high-frequency SQL and PostgreSQL interview questions covering query lifecycles, joins, window functions, and subquery optimization.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the logical order of execution of an SQL query?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Although written starting with `SELECT`, the database engine executes SQL clauses in this order: 1. `FROM` and `JOIN` (identify tables and merge), 2. `WHERE` (filter individual rows), 3. `GROUP BY` (aggregate into buckets), 4. `HAVING` (filter aggregated groups), 5. `SELECT` (compute column projections and aliases), 6. `DISTINCT` (eliminate duplicates), 7. `ORDER BY` (sort results), and 8. `LIMIT` / `OFFSET` (paginate output window)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is the difference between WHERE and HAVING?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`WHERE` filters individual rows BEFORE any grouping occurs, and cannot contain aggregate functions like `SUM()` or `COUNT()`. `HAVING` filters grouped rows AFTER the `GROUP BY` clause has aggregated the dataset, and specifically evaluates aggregate expressions (e.g. `HAVING COUNT(*) > 5`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is the difference between RANK(), DENSE_RANK(), and ROW_NUMBER()?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "When sorting values with ties (e.g. scores 100, 100, 90): `ROW_NUMBER()` assigns sequential numbers (1, 2, 3) arbitrarily breaking ties. `RANK()` assigns identical ranks to tied values but leaves gaps in the sequence (1, 1, 3). `DENSE_RANK()` assigns identical ranks to tied values without leaving gaps (1, 1, 2)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">Why does NOT IN (subquery) fail when the subquery returns a single NULL?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Because SQL uses Three-Valued Logic. `x NOT IN (1, 2, NULL)` evaluates to `(x != 1) AND (x != 2) AND (x != NULL)`. Comparing anything with NULL using equality operators yields `UNKNOWN`. In SQL, `TRUE AND UNKNOWN` yields `UNKNOWN`. Since a `WHERE` clause only accepts rows that evaluate strictly to `TRUE`, the entire query returns zero rows. The safe alternative is to use `NOT EXISTS`, which relies on row existence rather than value comparison."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is a Recursive CTE, and how does it execute iteratively?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Recursive CTE uses `WITH RECURSIVE` and consists of an Anchor member, `UNION ALL`, and a Recursive member referencing the CTE itself. The engine first executes the Anchor query to seed the working table. In subsequent iterations, it executes the Recursive query joining with the working table from the previous step. It appends results to the final set and updates the working table until an iteration yields zero rows, making it ideal for graph and hierarchical tree traversal."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What is the difference between UNION and UNION ALL?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`UNION ALL` simply concatenates two result sets together without inspecting rows. `UNION` concatenates the sets and performs an extra deduplication step (equivalent to `DISTINCT`), sorting or hashing the combined set to remove duplicates. `UNION ALL` is significantly faster and consumes less memory; you should always prefer `UNION ALL` unless duplicate elimination is explicitly required."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is a CROSS JOIN, and when does it become dangerous?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A `CROSS JOIN` produces the Cartesian product of two tables, pairing every row from the first table with every row from the second table. If Table A has 10,000 rows and Table B has 10,000 rows, a `CROSS JOIN` produces 100,000,000 rows. It becomes dangerous when accidentally written (such as omitting a `WHERE` join condition in comma-separated `FROM TableA, TableB`), which can exhaust database memory and lock the engine."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is an Anti-Join, and how is it implemented?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An Anti-Join returns rows from the first table that have NO matching rows in the second table. The two most common implementations are: 1. `LEFT JOIN` combined with `WHERE right_table.id IS NULL`, and 2. `WHERE NOT EXISTS (SELECT 1 FROM right_table WHERE right_table.fk = left_table.id)`. In PostgreSQL, `NOT EXISTS` is generally preferred because the query planner can optimize it as an Anti-Semi-Join."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is the difference between COUNT(*), COUNT(1), and COUNT(column_name)?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`COUNT(*)` and `COUNT(1)` are functionally identical in modern PostgreSQL; both count the total number of rows matching the query, including rows containing NULLs. `COUNT(column_name)`, however, only counts rows where `column_name IS NOT NULL`, completely ignoring NULL values. If a column has 10 rows and 3 are NULL, `COUNT(*)` returns 10 while `COUNT(column_name)` returns 7."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What do LEAD() and LAG() window functions do?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`LAG(col, n)` accesses the value of `col` from `n` rows prior to the current row within the partitioned window. `LEAD(col, n)` accesses the value from `n` rows ahead. They allow computing time-series differences, such as month-over-month revenue growth or user activity gaps, in a single pass without expensive self-joins."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">How does PostgreSQL handle CTE materialization since PostgreSQL 12?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Prior to PostgreSQL 12, CTEs acted as optimization fences: the CTE was always materialized (computed separately into a temporary structure), preventing the planner from pushing outer `WHERE` predicates down into the CTE. In PostgreSQL 12+, CTEs are automatically inlined like subqueries if referenced only once and lacking side-effects. You can explicitly force behavior using `WITH ... AS MATERIALIZED` or `WITH ... AS NOT MATERIALIZED`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the difference between COALESCE and NULLIF?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`COALESCE(val1, val2, ...)` evaluates arguments in order and returns the first non-NULL value, commonly used for default fallbacks: `COALESCE(phone, 'N/A')`. `NULLIF(a, b)` returns `NULL` if `a === b`, otherwise returns `a`. Its classic use case is preventing division-by-zero errors: `total / NULLIF(count, 0)`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: How would you write a query to find the second highest salary in an employees table?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The cleanest production approach uses `DENSE_RANK()`: `WITH ranked AS (SELECT salary, DENSE_RANK() OVER (ORDER BY salary DESC) as rnk FROM employees) SELECT salary FROM ranked WHERE rnk = 2 LIMIT 1;`. `DENSE_RANK()` correctly handles ties if multiple employees share the top salary. Alternatively, `SELECT MAX(salary) FROM employees WHERE salary < (SELECT MAX(salary) FROM employees)`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the difference between a Correlated Subquery and an Uncorrelated Subquery?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An uncorrelated subquery is independent of the outer query; it executes once and passes its static result to the outer query. A correlated subquery references columns from the outer query table (e.g. `WHERE o.customer_id = c.id`). Historically, correlated subqueries executed once for every row processed by the outer query, causing performance bottlenecks, though modern query optimizers frequently rewrite them into joins."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is the difference between ROWS and RANGE in Window Framing?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`ROWS` specifies the frame offset by a physical count of rows (e.g. `ROWS BETWEEN 2 PRECEDING AND CURRENT ROW` strictly includes 3 physical rows). `RANGE` specifies offsets by value equality of the `ORDER BY` expression. If multiple rows share the exact same `ORDER BY` value, `RANGE` treats them as duplicates and includes all peer rows within the frame, which can cause unexpected aggregate jumps."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What does the DISTINCT ON (expression) clause do in PostgreSQL?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`DISTINCT ON` is a PostgreSQL-specific extension that keeps only the first row for each group of rows sharing the specified expression values. Combined with `ORDER BY`, it provides a clean way to select the single latest or highest record per category: `SELECT DISTINCT ON (department_id) * FROM employees ORDER BY department_id, salary DESC` selects the highest-paid employee per department."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">How does a Self-Join work, and what is its typical use case?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A self-join is a regular join where a table is joined to itself under different table aliases (e.g. `FROM employees e LEFT JOIN employees m ON e.manager_id = m.id`). Its typical use case is modeling hierarchical or recursive data stored in a single table, such as employees and their managers, parent categories, or tracking flight routes with source and destination airports."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">Scenario: You need to generate a sequence of all 365 calendar dates in 2024 to join with sales data and find days with zero sales. How do you generate this in PostgreSQL?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In PostgreSQL, I use the `generate_series()` function: `SELECT generate_series('2024-01-01'::DATE, '2024-12-31'::DATE, '1 day'::INTERVAL)::DATE AS calendar_date`. I then `LEFT JOIN` this date series onto the `sales` table on `calendar_date = sales.sale_date`. Days with zero sales will have `NULL` sales amounts, which can be coalesced to 0."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is an UPSERT in PostgreSQL, and how does ON CONFLICT DO UPDATE work?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An UPSERT atomically inserts a row or updates an existing row if a unique constraint or primary key collision occurs. In PostgreSQL: `INSERT INTO users (id, email, visits) VALUES (1, 'alice@test.com', 1) ON CONFLICT (email) DO UPDATE SET visits = users.visits + 1, updated_at = NOW()`. The special pseudo-record `EXCLUDED` represents the proposed values that conflicted."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">What is the difference between DROP TABLE, TRUNCATE TABLE, and DELETE FROM?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`DELETE FROM` is a DML command that deletes rows one by one, logs each deletion in WAL, executes `ON DELETE` triggers, and supports `WHERE` clauses. `TRUNCATE TABLE` is a DDL command that deallocates entire table data pages in bulk; it is much faster than `DELETE`, does not fire row triggers, and resets identity counters. `DROP TABLE` removes the table data AND the table schema definition completely from the database catalog."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

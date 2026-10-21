@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 31: Clean Code and Software Design | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master SOLID principles in TypeScript, Dependency Injection, Layered Repository Architecture, DRY/KISS/YAGNI trade-offs, and pragmatic refactoring of code smells.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="31">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VI — API Design, Security, and Software Engineering</div>
+          <h1 class="chapter-title">Chapter 31: Clean Code and Software Design</h1>
+          <p class="chapter-lead">
+            Crafting maintainable, decoupled, and testable applications: SOLID principles applied to modern JavaScript and TypeScript, lightweight Dependency Injection, the Controller-Service-Repository architectural pattern, balancing DRY against premature abstraction, and recognizing code smells.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">SOLID in TypeScript</span>
+              <span class="meta-pill">Repository Pattern</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Apply each of the five <strong>SOLID Principles</strong> (Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion) to realistic TypeScript backends.</li>
+            <li>Implement lightweight <strong>Dependency Injection (DI)</strong> using constructor injection and factory composition roots without heavy enterprise frameworks.</li>
+            <li>Structure Express and Node.js microservices using the <strong>Controller-Service-Repository Pattern</strong>.</li>
+            <li>Evaluate pragmatic trade-offs between <strong>DRY</strong> (Don't Repeat Yourself), <strong>KISS</strong>, and <strong>YAGNI</strong> to prevent premature abstraction.</li>
+            <li>Identify and refactor classic <strong>Code Smells</strong>: God Objects, Feature Envy, Long Parameter Lists, and Primitive Obsession.</li>
+            <li>Design domain logic that is 100% testable in isolation without mocking external databases or HTTP clients.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The SOLID Principles in Modern TypeScript</h2>
+        <p>
+          Introduced by Robert C. Martin ("Uncle Bob"), the <strong>SOLID</strong> principles are five fundamental design guidelines for object-oriented and modular programming. When properly applied in TypeScript, they prevent code rigidity, fragility, and tight coupling.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Principle</th>
+                <th>Core Concept</th>
+                <th>TypeScript Anti-Pattern</th>
+                <th>Clean Refactoring Approach</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>S — Single Responsibility (SRP)</strong></td>
+                <td>A module, class, or function should have one, and only one, reason to change.</td>
+                <td>An Express route handler that parses HTTP headers, validates input, executes SQL queries, sends emails, and formats responses in one 200-line function.</td>
+                <td>Delegate concerns: Controller handles HTTP/status codes, Service handles business logic, Repository handles DB access, Mailer handles SMTP.</td>
+              </tr>
+              <tr>
+                <td><strong>O — Open/Closed (OCP)</strong></td>
+                <td>Software entities should be open for extension, but closed for modification.</td>
+                <td>A giant <code>switch(paymentMethod)</code> statement that must be edited and re-deployed whenever Stripe, PayPal, or Crypto is added.</td>
+                <td>Use the Strategy Pattern: define a <code>PaymentGateway</code> interface; add new payment classes implementing the interface without touching existing code.</td>
+              </tr>
+              <tr>
+                <td><strong>L — Liskov Substitution (LSP)</strong></td>
+                <td>Subtypes must be substitutable for their base types without altering program correctness.</td>
+                <td>A <code>ReadOnlyRepository</code> extending <code>Repository</code> where calling <code>save()</code> throws an unexpected <code>new Error("Operation not supported")</code> runtime crash.</td>
+                <td>Do not force subclasses to implement or inherit operations they cannot fulfill. Split interfaces into segregated contracts.</td>
+              </tr>
+              <tr>
+                <td><strong>I — Interface Segregation (ISP)</strong></td>
+                <td>Clients should not be forced to depend on methods they do not use.</td>
+                <td>A bloated <code>IUserWorker</code> interface containing 25 methods (email, billing, analytics, audit, payroll) passed to a component that only needs <code>sendWelcomeEmail()</code>.</td>
+                <td>Compose fine-grained, cohesive interfaces: <code>EmailRecipient</code>, <code>BillableUser</code>, <code>Auditable</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>D — Dependency Inversion (DIP)</strong></td>
+                <td>High-level business modules should not depend on low-level modules; both should depend on abstractions (interfaces).</td>
+                <td>An <code>OrderService</code> directly importing and calling <code>new PostgreSQLClient()</code>, tightly coupling domain logic to a specific database driver.</td>
+                <td>Inject an <code>IOrderRepository</code> interface into the <code>OrderService</code> constructor. The database implementation is injected at runtime.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. SOLID in Action: A Refactoring Walkthrough</h2>
+        <p>
+          Let us examine how an unmaintainable, coupled user registration function is systematically refactored using SOLID and TypeScript interfaces.
+        </p>
+
+        <h3>The Coupled Anti-Pattern</h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Violating SRP, OCP, and DIP</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">// ❌ ANTI-PATTERN: Violates SRP, OCP, and DIP
+import { Client } from &#39;pg&#39;;
+import nodemailer from &#39;nodemailer&#39;;
+
+export class UserService {
+  private db: Client;
+
+  constructor() {
+    this.db = new Client({ connectionString: process.env.DATABASE_URL }); // Concrete coupling!
+    this.db.connect();
+  }
+
+  async registerUser(email: string, pass: string, plan: string): Promise&lt;void&gt; {
+    // 1. Validation mixed with business logic
+    if (!email.includes(&#39;@&#39;)) throw new Error(&#39;Invalid email&#39;);
+
+    // 2. Direct database query
+    await this.db.query(&#39;INSERT INTO users(email, password) VALUES($1, $2)&#39;, [email, pass]);
+
+    // 3. Concrete switch violating Open/Closed
+    if (plan === &#39;stripe&#39;) {
+      // charge via Stripe SDK...
+    } else if (plan === &#39;paypal&#39;) {
+      // charge via PayPal SDK...
+    }
+
+    // 4. Concrete email transport coupled directly
+    const transport = nodemailer.createTransport({ host: &#39;smtp.mail.com&#39; });
+    await transport.sendMail({ to: email, subject: &#39;Welcome!&#39;, text: &#39;Thanks for joining&#39; });
+  }
+}</code></pre>
+        </div>
+
+        <h3>The Clean, Decoupled Architecture</h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Applying SOLID with Inversion of Control</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">// 1. Domain Entities &amp; Inverted Interfaces (Abstractions)
+export interface User {
+  id: string;
+  email: string;
+  createdAt: Date;
+}
+
+export interface IUserRepository {
+  save(user: { email: string; passwordHash: string }): Promise&lt;User&gt;;
+  findByEmail(email: string): Promise&lt;User | null&gt;;
+}
+
+export interface IPaymentProcessor {
+  processSubscription(userId: string, planId: string): Promise&lt;void&gt;;
+}
+
+export interface INotificationService {
+  sendWelcomeNotification(email: string): Promise&lt;void&gt;;
+}
+
+// 2. High-Level Domain Service (Closed for modification, open for extension)
+export class UserRegistrationService {
+  constructor(
+    private readonly userRepo: IUserRepository,
+    private readonly paymentProcessor: IPaymentProcessor,
+    private readonly notifier: INotificationService
+  ) {}
+
+  async register(email: string, passwordHash: string, planId: string): Promise&lt;User&gt; {
+    const existing = await this.userRepo.findByEmail(email);
+    if (existing) {
+      throw new Error(&#39;User already exists&#39;);
+    }
+
+    const newUser = await this.userRepo.save({ email, passwordHash });
+    await this.paymentProcessor.processSubscription(newUser.id, planId);
+    await this.notifier.sendWelcomeNotification(newUser.email);
+
+    return newUser;
+  }
+}</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Lightweight Dependency Injection (DI)</h2>
+        <p>
+          Many developers believe Dependency Injection requires bulky Java-style reflection containers (like InversifyJS or NestJS). In JavaScript and TypeScript, <strong>Constructor Injection</strong> with a simple <strong>Composition Root</strong> provides 100% of DI benefits with zero framework overhead.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: The Composition Root Assembly Flow</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">                         +-----------------------------+
+                         |      Composition Root       |
+                         |        (server.ts)          |
+                         +-----------------------------+
+                                        |
+               +------------------------+------------------------+
+               |                        |                        |
+               v                        v                        v
+      +-----------------+      +-----------------+      +-----------------+
+      | PgUserRepository|      | StripeGateway   |      | SESNotification |
+      +-----------------+      +-----------------+      +-----------------+
+               \                        |                        /
+                \                       |                       /
+                 v                      v                      v
+               +-------------------------------------------------+
+               |             UserRegistrationService             |
+               +-------------------------------------------------+
+                                        |
+                                        v
+               +-------------------------------------------------+
+               |              UserController                     |
+               +-------------------------------------------------+</code></pre>
+        </div>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Pure TypeScript Composition Root (Zero Framework)</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">// src/container.ts (The Composition Root)
+import { Pool } from &#39;pg&#39;;
+import { PostgresUserRepository } from &#39;./repositories/PostgresUserRepository&#39;;
+import { StripePaymentProcessor } from &#39;./services/StripePaymentProcessor&#39;;
+import { SesNotificationService } from &#39;./services/SesNotificationService&#39;;
+import { UserRegistrationService } from &#39;./services/UserRegistrationService&#39;;
+import { UserController } from &#39;./controllers/UserController&#39;;
+
+export function buildContainer() {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+  // Instantiate low-level adapters
+  const userRepo = new PostgresUserRepository(pool);
+  const paymentProcessor = new StripePaymentProcessor(process.env.STRIPE_SECRET_KEY!);
+  const notifier = new SesNotificationService();
+
+  // Inject into high-level business service
+  const registrationService = new UserRegistrationService(userRepo, paymentProcessor, notifier);
+
+  // Inject into HTTP Controller
+  const userController = new UserController(registrationService);
+
+  return { userController, pool };
+}</code></pre>
+        </div>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">💡 Why Pure Constructor Injection Wins in Unit Tests</div>
+          <p>
+            When unit testing <code>UserRegistrationService</code>, you never need complex mocking libraries like <code>jest.mock()</code>. You simply pass in-memory test stubs directly into the constructor:
+            <code>new UserRegistrationService(new InMemoryUserRepo(), new MockPayment(), new MockNotifier())</code>. Tests execute in sub-milliseconds with zero disk or network I/O.
+          </p>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. The Controller-Service-Repository Pattern</h2>
+        <p>
+          The <strong>Layered Architecture</strong> (Controller-Service-Repository) is the standard structural paradigm for enterprise Node.js and Express applications.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Layer Responsibilities and Data Flow</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">HTTP Client (Browser / Mobile)
+       |
+       |  HTTP Request (Headers, Cookies, JSON Body)
+       v
++-------------------------------------------------------------------------+
+| CONTROLLER LAYER (Express Router / Route Handlers)                      |
+| Responsibilities:                                                       |
+| - Extracts params, query, and request body                              |
+| - Executes request schema validation (Zod)                              |
+| - Calls Service methods                                                 |
+| - Translates results to HTTP Status codes (200, 201, 404, 422)          |
++-------------------------------------------------------------------------+
+       |
+       |  Pure Domain DTOs / Primitive Arguments (NO req, NO res!)
+       v
++-------------------------------------------------------------------------+
+| SERVICE LAYER (Domain &amp; Business Logic)                                |
+| Responsibilities:                                                       |
+| - Enforces business rules (discounts, permissions, state transitions)   |
+| - Coordinates multiple repositories and external integrations           |
+| - Emits domain events or enqueues background jobs                       |
+| - Completely decoupled from HTTP (can be called by CLI, Cron, or Queue) |
++-------------------------------------------------------------------------+
+       |
+       |  Domain Queries and Entity Persistence
+       v
++-------------------------------------------------------------------------+
+| REPOSITORY LAYER (Data Access Object / DAO)                             |
+| Responsibilities:                                                       |
+| - Executes raw SQL queries or MongoDB aggregation pipelines             |
+| - Maps database rows/documents into typed Domain Entities               |
+| - Encapsulates database technology details (PostgreSQL, Prisma, Mongo)  |
++-------------------------------------------------------------------------+
+       |
+       |  SQL / BSON
+       v
+Database Engine (PostgreSQL / MongoDB)</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Pragmatic Design: DRY, KISS, and YAGNI</h2>
+        <p>
+          While design patterns are powerful, dogmatic adherence to them leads to catastrophic over-engineering. Senior engineers balance software principles with practical business delivery.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Principle</th>
+                <th>Core Premise</th>
+                <th>Over-Engineering Hazard (Anti-Pattern)</th>
+                <th>Senior Engineering Pragmatism</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>DRY (Don't Repeat Yourself)</strong></td>
+                <td>Every piece of domain knowledge must have a single, unambiguous representation in a system.</td>
+                <td>Merging two completely distinct features (e.g., User Address and Billing Address) into a generic "GenericLocationEntity" because they happen to share three field names.</td>
+                <td><em>"Duplication is far cheaper than the wrong abstraction"</em> (Sandi Metz). Allow code to be duplicated 2–3 times before extracting a common abstraction (Rule of Three).</td>
+              </tr>
+              <tr>
+                <td><strong>KISS (Keep It Simple, Stupid)</strong></td>
+                <td>Systems work best if they are kept simple rather than made complicated.</td>
+                <td>Adding an event-driven Kafka message bus and CQRS event sourcing to an application that handles 50 requests per day.</td>
+                <td>Build the simplest working solution that satisfies non-functional requirements. Prefer straightforward synchronous SQL transactions until scale demands distributed systems.</td>
+              </tr>
+              <tr>
+                <td><strong>YAGNI (You Aren't Gonna Need It)</strong></td>
+                <td>Never implement functionality until it is actually necessary.</td>
+                <td>Writing an abstract multi-database driver supporting Cassandra, CouchDB, and SQLite "just in case the startup changes databases next year."</td>
+                <td>Design clean interfaces so that replacing an implementation later is easy, but only write code required for today's user stories.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Code Smells &amp; Refactoring Patterns</h2>
+        <p>
+          A <strong>Code Smell</strong> is a surface symptom in source code that indicates a deeper architectural design weakness.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Code Smell</th>
+                <th>Symptom &amp; Danger</th>
+                <th>Target Refactoring Technique</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>God Object / Large Class</strong></td>
+                <td>A single file or class exceeding 1,000 lines that controls almost all application behavior.</td>
+                <td><strong>Extract Class / Module:</strong> Group related methods and state into smaller, cohesive service classes following SRP.</td>
+              </tr>
+              <tr>
+                <td><strong>Long Parameter List</strong></td>
+                <td>A function signature taking 7+ positional arguments (<code>createUser(fn, ln, email, age, phone, role, zip...)</code>). Easy to pass arguments in wrong order!</td>
+                <td><strong>Introduce Parameter Object:</strong> Group arguments into a single typed TypeScript object or interface (<code>createUser(input: CreateUserInput)</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Primitive Obsession</strong></td>
+                <td>Using raw primitives (strings, numbers) for rich domain concepts like currency, postal codes, or email addresses.</td>
+                <td><strong>Value Object Pattern:</strong> Encapsulate the primitive inside a dedicated Value Object with validation rules (e.g., class <code>Money { amount, currency }</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Feature Envy</strong></td>
+                <td>A method in Class A continuously queries Class B's internal getters to perform calculations rather than letting Class B compute its own result.</td>
+                <td><strong>Move Method:</strong> Relocate the calculation method inside Class B where the data naturally resides.</td>
+              </tr>
+              <tr>
+                <td><strong>Shotgun Surgery</strong></td>
+                <td>Making a single small business change requires modifying 15 different files across the codebase.</td>
+                <td><strong>Co-locate and Consolidate:</strong> Realign boundaries so that single domain changes affect only one cohesive module.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Refactoring a God Handler into Controller-Service-Repository</h3>
+        <p>
+          <strong>Scenario:</strong> You inherit an Express endpoint <code>app.post('/api/orders')</code> that executes <code>pg.Pool</code> queries, calculates tax, calls Stripe, and writes to disk in a single block. Refactor it into a <code>OrderService</code> that accepts an <code>IOrderRepository</code> interface.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">export interface Order {
+  id: string;
+  userId: string;
+  total: number;
+  status: &#39;pending&#39; | &#39;paid&#39;;
+}
+
+export interface IOrderRepository {
+  create(order: Omit&lt;Order, &#39;id&#39;&gt;): Promise&lt;Order&gt;;
+}
+
+export class OrderService {
+  constructor(private readonly orderRepo: IOrderRepository) {}
+
+  async createOrder(userId: string, items: Array&lt;{ price: number; quantity: number }&gt;): Promise&lt;Order&gt; {
+    if (items.length === 0) {
+      throw new Error(&#39;Cannot create an empty order&#39;);
+    }
+
+    const subtotal = items.reduce((acc, item) =&gt; acc + item.price * item.quantity, 0);
+    const tax = subtotal * 0.08; // 8% sales tax calculation
+    const total = subtotal + tax;
+
+    return this.orderRepo.create({
+      userId,
+      total,
+      status: &#39;pending&#39;
+    });
+  }
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: Implementing the Open/Closed Principle with the Strategy Pattern</h3>
+        <p>
+          <strong>Scenario:</strong> Refactor a discount calculation engine from an ugly <code>if/else</code> chain into a strategy-based pattern that allows adding new discount types (e.g., <code>SeasonalDiscount</code>, <code>VIPDiscount</code>) without altering the core calculator.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">export interface IDiscountStrategy {
+  calculate(rawTotal: number): number;
+}
+
+export class VipDiscountStrategy implements IDiscountStrategy {
+  calculate(rawTotal: number): number {
+    return rawTotal * 0.8; // 20% discount for VIPs
+  }
+}
+
+export class SeasonalDiscountStrategy implements IDiscountStrategy {
+  calculate(rawTotal: number): number {
+    return Math.max(0, rawTotal - 15); // $15 flat seasonal coupon
+  }
+}
+
+export class StandardDiscountStrategy implements IDiscountStrategy {
+  calculate(rawTotal: number): number {
+    return rawTotal; // No discount
+  }
+}
+
+export class CheckoutCalculator {
+  constructor(private strategy: IDiscountStrategy) {}
+
+  setStrategy(strategy: IDiscountStrategy): void {
+    this.strategy = strategy;
+  }
+
+  getFinalTotal(subtotal: number): number {
+    return this.strategy.calculate(subtotal);
+  }
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 8: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>8. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering SOLID principles, Dependency Injection, the Repository Pattern, code smells, and clean architecture.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the Single Responsibility Principle (SRP) and how do you identify its violation?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Single Responsibility Principle states that a class or module should have only one reason to change, meaning it should focus on a single actor or business concern. A common violation in full-stack code is an Express route handler that parses HTTP headers, validates input fields, executes SQL queries, formats PDF receipts, and sends emails all within the same function."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is Dependency Inversion Principle (DIP) and how does it differ from Dependency Injection (DI)?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Dependency Inversion is the high-level design principle stating that high-level business modules should depend on abstractions (interfaces) rather than low-level concrete implementations. Dependency Injection is the actual design pattern or technique used to implement DIP, where dependencies are passed into a class (e.g., via constructor arguments) rather than instantiated internally."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is the Controller-Service-Repository pattern and why is it beneficial?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "It separates concerns into three distinct layers: Controllers handle HTTP transport (request parsing, status codes, response serialization); Services encapsulate core business logic and workflows without HTTP coupling; and Repositories handle database persistence and querying. This makes business logic 100% testable without database or web server mocks and allows the same service to be called from CLI or message queues."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is the DRY principle and what is the danger of premature DRYing?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "DRY (Don't Repeat Yourself) aims to prevent duplication of domain knowledge. The danger of premature DRYing is creating the 'Wrong Abstraction': merging two unrelated pieces of code that happen to look identical today into a complex generic function. When those features diverge in business requirements tomorrow, developers are forced to add messy flags and conditionals. Duplication is cheaper than the wrong abstraction."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is the YAGNI principle and how do you practice it in product development?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "YAGNI stands for 'You Aren't Gonna Need It'. It advises against building features, abstractions, or infrastructure for speculative future needs. In practice, you write clean, modular code that solves today's concrete user requirements while keeping interfaces decoupled enough that extending or refactoring the system later remains straightforward."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What is the Open/Closed Principle (OCP) and how do you implement it in TypeScript?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Open/Closed states that code should be open for extension but closed for modification. In TypeScript, we implement OCP using interfaces and polymorphism (like the Strategy Pattern). Instead of modifying a centralized `switch` statement every time a new payment processor or notification channel is added, we define an interface and create a new class implementing that interface, requiring zero modifications to existing code."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is the Liskov Substitution Principle (LSP) and how is it commonly violated?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "LSP dictates that derived classes must be usable through their base interface without breaking client expectations. A common violation occurs when a subclass overrides a base class method with a no-op or throws an unsupported exception—like a `ReadOnlyDatabaseRepository` throwing an error inside `save()`. If a client expecting a repository crashes, LSP has been violated."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is the Interface Segregation Principle (ISP) and why is it relevant in TypeScript?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "ISP states that clients should not be forced to depend on methods they do not use. In TypeScript, creating large 'God Interfaces' with dozens of properties and methods forces mock implementations in unit tests to stub unnecessary functions. By segregating interfaces into smaller, role-focused contracts (`Readable`, `Writable`, `Auditable`), components remain decoupled."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is a Composition Root in Dependency Injection?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Composition Root is the single location near the application's entry point (e.g., `server.ts` or `container.ts`) where the entire dependency graph is wired together. Concrete repositories, database connection pools, and external adapters are instantiated here and injected into services and controllers. The rest of the application remains completely unaware of how dependencies are instantiated."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is the Primitive Obsession code smell and how do Value Objects fix it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Primitive Obsession is the habit of using basic primitives (like strings and numbers) to represent domain concepts with specific rules (like Email, Currency, or Phone Number). Value Objects fix this by encapsulating the primitive inside a dedicated class or type with self-contained validation and equality logic, ensuring invalid values cannot exist in domain entities."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is Feature Envy and how do you refactor it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Feature Envy occurs when a method in one class extensively accesses the getters and internal data of another class to calculate a result. The remedy is the 'Move Method' refactoring: move the logic into the class that actually owns the data, upholding object encapsulation and the 'Tell, Don't Ask' principle."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">Why should you avoid passing Express req and res objects into domain service functions?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Passing `req` and `res` into service functions leaks HTTP transport concerns into core business logic. It makes unit testing painful because you must mock complex HTTP objects, and it prevents reusing that service inside background job consumers (BullMQ), WebSocket handlers, or CLI scripts where no HTTP request exists."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is the difference between an Anemic Domain Model and a Rich Domain Model?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An Anemic Domain Model consists of entities that are purely bags of getters and setters with zero logic, forcing all business rules into procedural service classes. A Rich Domain Model co-locates business behavior, validation rules, and invariants directly inside the domain entity itself (e.g., `order.applyDiscount()`), preventing invalid states."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is Shotgun Surgery and what architectural flaw does it indicate?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Shotgun Surgery happens when making a single small conceptual change requires editing many different files across the codebase. It indicates poor cohesion and tight coupling: responsibilities that belong together have been fragmented across multiple modules, increasing regression risk."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is Hexagonal Architecture (Ports and Adapters) and how does it relate to DIP?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Hexagonal Architecture isolates pure business logic in the center, interacting with the outside world through 'Ports' (interfaces). 'Adapters' implement those ports for specific infrastructure—such as an Express Controller (driving adapter) or a PostgreSQL repository (driven adapter). It is a complete embodiment of DIP: the core domain never depends on databases or UI frameworks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How do you manage database transactions cleanly when using the Repository Pattern?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Transactions span multiple repository operations. A clean pattern is the Unit of Work pattern or passing a transactional client context: `userRepo.withTransaction(client).save()`. Alternatively, implement a transaction runner in the service layer: `transactionManager.run(async (tx) => { await repoA.save(tx); await repoB.save(tx); })`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">Why can excessive use of Design Patterns become an anti-pattern?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Design patterns solve specific, known problems. Applying them prematurely or dogmatically creates indirection, cognitive load, and boilerplates—such as AbstractFactoryBuilderDecorators for simple CRUD operations. Pragmatic engineering applies patterns only when the underlying complexity or variation actually justifies the abstraction."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is the Law of Demeter (Principle of Least Knowledge)?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Law of Demeter states that a module should only talk to its immediate collaborators and not navigate the internal object structure of its dependencies (avoiding 'train wrecks' like `order.getUser().getAddress().getZipCode()`). Violating it tightly couples code to the entire structural hierarchy, meaning changes to `Address` break `OrderProcessing`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">How do you structure functional programming patterns to achieve clean architecture without classes?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In functional TypeScript, DI is achieved via Higher-Order Functions and Currying: a factory function takes repository closures as arguments and returns the domain function: `const makeRegisterUser = (repo: UserRepo) => async (email, pass) => { ... }`. Pure business logic is modeled as pure functions, and I/O effects are deferred to the boundaries."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you balance clean architecture against delivery speed in early-stage startups?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In early startups, product-market fit is the priority. I practice 'Pragmatic Modular Design': keep business logic separated from HTTP controllers and write clean SQL queries, but avoid over-engineering with 5 layers of microservices, event sourcing, or heavy DI frameworks. Modular monoliths with clean boundaries can be shipped rapidly today and refactored seamlessly tomorrow."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

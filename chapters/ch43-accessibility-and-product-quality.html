@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 43: Accessibility and Product Quality | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master web accessibility (a11y) and product quality: WCAG 2.2 principles (POUR), First Rule of ARIA, keyboard navigation, modal focus traps, accessible forms, screen reader testing, and automated axe-core audits.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="43">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART IX — Advanced and Frequently Overlooked Topics</div>
+          <h1 class="chapter-title">Chapter 43: Accessibility and Product Quality</h1>
+          <p class="chapter-lead">
+            Web accessibility (a11y) is not an afterthought or an optional checklist—it is a core software engineering discipline and legal requirement that impacts over 1.3 billion people worldwide. This chapter explores the WCAG 2.2 framework (POUR), semantic HTML vs. WAI-ARIA, keyboard navigation, focus management and modal focus traps, screen reader interoperability, accessible form validation, and automated quality testing with axe-core.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">WCAG 2.2 &amp; ARIA</span>
+              <span class="meta-pill">Focus Management &amp; A11y Audits</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand the legal, ethical, and product impact of <strong>WCAG 2.1 / 2.2</strong> compliance levels (A, AA, AAA) and the European Accessibility Act (EAA).</li>
+            <li>Master the <strong>POUR Framework</strong>: Perceivable, Operable, Understandable, and Robust.</li>
+            <li>Internalize the <strong>First Rule of ARIA</strong>: native semantic HTML always beats synthetic ARIA overlays.</li>
+            <li>Implement rigorous <strong>Keyboard Navigation</strong>: focus order, <code>tabindex</code> mechanics (<code>0</code> vs. <code>-1</code>), and <code>:focus-visible</code> indicators.</li>
+            <li>Architect a production-grade <strong>Modal Focus Trap</strong> with focus preservation and <code>Escape</code> key dismissal.</li>
+            <li>Construct accessible forms with explicit label association, error announcement via <code>role="alert"</code>, and <code>aria-describedby</code>.</li>
+            <li>Deploy automated accessibility auditing pipelines with <strong>axe-core</strong> and execute manual screen reader audits.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Four Principles of Accessibility: The POUR Framework</h2>
+        <p>
+          The World Wide Web Consortium (W3C) organizes the <strong>Web Content Accessibility Guidelines (WCAG)</strong> around four foundational pillars known as <strong>POUR</strong>:
+        </p>
+
+        <div class="diagram-container">
+          <pre class="ascii-diagram">
++---------------------------------------------------------------------------------------------------+
+|                                 THE WCAG 2.2 "POUR" FRAMEWORK                                     |
++---------------------------------------------------------------------------------------------------+
+|  1. PERCEIVABLE                                                                                   |
+|     - Information and UI components must be presentable to users in ways they can perceive.       |
+|     - Examples: Text alternatives for non-text content (alt text), color contrast (4.5:1 ratio),  |
+|       captions for audio/video, adaptable layout without loss of content.                         |
+|                                                                                                   |
+|  2. OPERABLE                                                                                      |
+|     - UI components and navigation must be operable via any interface (keyboard, voice, switch).  |
+|     - Examples: All actions keyboard accessible, no keyboard traps, skip-to-content links,        |
+|       sufficient time to read/interact, no content causing seizures (< 3 flashes/sec).            |
+|                                                                                                   |
+|  3. UNDERSTANDABLE                                                                                |
+|     - Information and UI operation must be understandable and predictable.                        |
+|     - Examples: Defined language (&lt;html lang="en"&gt;), consistent navigation menus, clear error    |
+|       identification with actionable remediation suggestions.                                     |
+|                                                                                                   |
+|  4. ROBUST                                                                                        |
+|     - Content must be robust enough to be reliably interpreted by a wide variety of user agents,  |
+|       including current and future assistive technologies (screen readers, braille displays).     |
+|     - Examples: Valid semantic markup, unique element IDs, appropriate ARIA roles and states.     |
++---------------------------------------------------------------------------------------------------+
+          </pre>
+        </div>
+
+        <h3>A. WCAG Compliance Levels: A, AA, and AAA</h3>
+        <ul>
+          <li><strong>Level A:</strong> The absolute baseline. Without meeting Level A, assistive technology users find the application completely unusable (e.g., images without <code>alt</code> text, keyboard navigation completely broken).</li>
+          <li><strong>Level AA:</strong> The global standard for commercial, enterprise, and public sector websites (required by Section 508, the ADA in legal precedents, and the EU European Accessibility Act). Targets standard contrast (4.5:1), visible focus indicators, and accessible error validation.</li>
+          <li><strong>Level AAA:</strong> The highest standard of specialized accessibility (e.g., 7:1 color contrast, sign language interpretation for all audio). Rarely applied across an entire commercial product, but targeted for specialized portals.</li>
+        </ul>
+
+        <h3>B. Color Contrast Ratio Math</h3>
+        <p>
+          Under WCAG 2.2 Level AA:
+        </p>
+        <ul>
+          <li><strong>Regular Text (&lt; 18pt / 24px, or &lt; 14pt / 18.5px bold):</strong> Must have a minimum contrast ratio of <strong>4.5:1</strong> against its background.</li>
+          <li><strong>Large Text (&ge; 18pt / 24px, or &ge; 14pt / 18.5px bold):</strong> Must have a minimum contrast ratio of <strong>3:1</strong>.</li>
+          <li><strong>UI Components and Graphical Objects (Borders, Icons, Focus Rings):</strong> Must have a minimum contrast ratio of <strong>3:1</strong> against adjacent background colors.</li>
+        </ul>
+
+        <!-- Section 2 -->
+        <h2>2. Semantic HTML vs. WAI-ARIA: The First Rule of ARIA</h2>
+        <p>
+          The W3C specification famously states the <strong>First Rule of ARIA</strong>:
+        </p>
+        <blockquote>
+          "If you can use a native HTML element or attribute with the semantics and behavior you require already built in, instead of re-purposing an element and adding an ARIA role, state or property to make it accessible, then do so."
+        </blockquote>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>❌ Synthetic <code>&lt;div&gt;</code> + ARIA Anti-Pattern</th>
+                <th>✅ Native Semantic HTML5</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Button</strong></td>
+                <td>
+                  <code>&lt;div role="button" tabindex="0" onclick="save()" onkeydown="..."&gt;</code><br>
+                  <em>Requires ~30 lines of JS to replicate Enter/Space activation, disabled state, and focus.</em>
+                </td>
+                <td>
+                  <code>&lt;button type="button" onclick="save()"&gt;</code><br>
+                  <em>Free keyboard support (Enter/Space), native disabled attribute, native form integration.</em>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Navigation Landmark</strong></td>
+                <td><code>&lt;div role="navigation"&gt;</code></td>
+                <td><code>&lt;nav aria-label="Main menu"&gt;</code></td>
+              </tr>
+              <tr>
+                <td><strong>Dialog Modal</strong></td>
+                <td><code>&lt;div role="dialog" aria-modal="true"&gt;</code></td>
+                <td><code>&lt;dialog&gt;</code> element with native <code>.showModal()</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>Form Input</strong></td>
+                <td>Custom SVG checkbox requiring custom keydown listeners.</td>
+                <td><code>&lt;input type="checkbox"&gt;</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>A. Essential ARIA Attributes When Custom UI Is Required</h3>
+        <p>
+          When building advanced interactive components (accordions, tabs, multi-select dropdowns) where native HTML elements are insufficient, ARIA attributes communicate state to assistive technologies:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">HTML (Core ARIA Attributes Breakdown)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-html">&lt;!-- 1. aria-label: Provides an accessible name when no visible text exists --&gt;
+&lt;button type="button" aria-label="Close dialog"&gt;
+  &lt;svg aria-hidden="true"&gt;...&lt;/svg&gt;
+&lt;/button&gt;
+
+&lt;!-- 2. aria-labelledby: Points to another element's ID for the name --&gt;
+&lt;section aria-labelledby="billing-heading"&gt;
+  &lt;h2 id="billing-heading"&gt;Billing Information&lt;/h2&gt;
+&lt;/section&gt;
+
+&lt;!-- 3. aria-describedby: Links secondary help text or error messages --&gt;
+&lt;input 
+  type="password" 
+  id="pwd" 
+  aria-describedby="pwd-help pwd-error" 
+  aria-invalid="true"&gt;
+&lt;span id="pwd-help"&gt;Must be at least 12 characters.&lt;/span&gt;
+&lt;span id="pwd-error" role="alert"&gt;Password cannot contain spaces.&lt;/span&gt;
+
+&lt;!-- 4. aria-expanded: Communicates whether an accordion or drawer is open --&gt;
+&lt;button type="button" aria-expanded="false" aria-controls="faq-panel-1"&gt;
+  What is your refund policy?
+&lt;/button&gt;
+&lt;div id="faq-panel-1" hidden&gt;We offer 30-day refunds...&lt;/div&gt;
+
+&lt;!-- 5. aria-hidden: Hides purely decorative visual items from screen readers --&gt;
+&lt;svg aria-hidden="true" focusable="false"&gt;...&lt;/svg&gt;</code></pre>
+        </div>
+
+        <h3>B. Live Regions: <code>aria-live</code> ("polite" vs. "assertive")</h3>
+        <p>
+          Screen readers only announce changes when the user navigates into an element. An <strong>ARIA Live Region</strong> instructs the screen reader to actively announce dynamic content changes (like toast notifications or cart count updates) without moving the user's focus:
+        </p>
+        <ul>
+          <li><code>aria-live="polite"</code>: Waits until the user finishes typing or the screen reader finishes its current spoken sentence before announcing the update (ideal for search result counts, cart notifications, or background saves).</li>
+          <li><code>aria-live="assertive"</code> (or <code>role="alert"</code>): Immediately interrupts whatever the user is hearing to announce a critical update (strictly reserved for errors, payment failures, or urgent session timeouts).</li>
+        </ul>
+
+        <!-- Section 3 -->
+        <h2>3. Keyboard Focus Management and Navigation</h2>
+        <p>
+          Millions of users interact with computers without a mouse—including people with motor disabilities, repetitive strain injuries (RSI), power developers using keyboard shortcuts, and screen reader users.
+        </p>
+
+        <h3>A. Mastering <code>tabindex</code></h3>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Value</th>
+                <th>Behavior</th>
+                <th>Appropriate Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>No <code>tabindex</code></strong></td>
+                <td>Native interactive elements (<code>&lt;a href&gt;</code>, <code>&lt;button&gt;</code>, <code>&lt;input&gt;</code>) are automatically focusable in source order.</td>
+                <td>Standard interactive controls.</td>
+              </tr>
+              <tr>
+                <td><code>tabindex="0"</code></td>
+                <td>Inserts a custom non-interactive element into the natural keyboard tab order based on DOM position.</td>
+                <td>Custom custom components, scrollable code containers, or complex tree widgets.</td>
+              </tr>
+              <tr>
+                <td><code>tabindex="-1"</code></td>
+                <td>Removes element from keyboard tab sequence, but makes it <strong>programmatically focusable</strong> via JavaScript <code>element.focus()</code>.</td>
+                <td>Modal dialog containers, drawer panels, error summaries, or skip navigation targets.</td>
+              </tr>
+              <tr>
+                <td><code>tabindex &gt; 0</code></td>
+                <td>Forces element to the front of the focus order ahead of the natural DOM flow.</td>
+                <td><strong>❌ DANGEROUS ANTI-PATTERN:</strong> Completely disrupts keyboard navigation order. Never use positive tabindex values!</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>B. The <code>:focus-visible</code> Pseudo-Class</h3>
+        <p>
+          A historical design flaw was setting <code>outline: none</code> on buttons to remove the default browser focus ring for mouse clicks, which rendered the application unusable for keyboard navigators.
+        </p>
+        <p>
+          Modern CSS solves this with <code>:focus-visible</code>, which applies focus styles <em>only</em> when the user is operating via keyboard or assistive devices, suppressing the ring on mouse clicks:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">CSS (Accessible Focus Styles)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-css">/* ❌ NEVER DO THIS: Strips focus rings for all users */
+button:focus {
+  outline: none;
+}
+
+/* ✅ BEST PRACTICE: Suppress default outline, provide distinct :focus-visible ring */
+button:focus {
+  outline: none;
+}
+
+button:focus-visible {
+  outline: 3px solid var(--color-primary, #0284c7);
+  outline-offset: 2px;
+  border-radius: 4px;
+}</code></pre>
+        </div>
+
+        <h3>C. Skip-to-Content Links</h3>
+        <p>
+          Keyboard users navigating a website should not be forced to tab through 50 global navigation links on every page transition. A <strong>Skip to Content</strong> link is visually hidden until focused via the keyboard:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">HTML &amp; CSS (Skip Navigation Link)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-html">&lt;!-- Placed as the very first element inside &lt;body&gt; --&gt;
+&lt;a href="#main-content" class="skip-link"&gt;Skip to main content&lt;/a&gt;
+
+&lt;nav&gt;... 50 navigation links ...&lt;/nav&gt;
+
+&lt;main id="main-content" tabindex="-1"&gt;
+  &lt;h1&gt;Welcome to the dashboard&lt;/h1&gt;
+&lt;/main&gt;
+
+&lt;style&gt;
+.skip-link {
+  position: absolute;
+  top: -9999px;
+  left: 10px;
+  background: #000;
+  color: #fff;
+  padding: 12px 18px;
+  z-index: 10000;
+  border-radius: 4px;
+  font-weight: bold;
+}
+
+.skip-link:focus {
+  top: 10px; /* Slides into view when user presses Tab */
+}
+&lt;/style&gt;</code></pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Building an Accessible Modal Dialog (Focus Trap Architecture)</h2>
+        <p>
+          Modals are among the most frequently broken UI components on the web. An accessible modal requires strict compliance with 5 foundational behaviors:
+        </p>
+        <ol>
+          <li><strong>Role and Modal Flag:</strong> <code>role="dialog"</code> and <code>aria-modal="true"</code> inform assistive technology that the rest of the page is dormant.</li>
+          <li><strong>Accessible Labeling:</strong> Linked to the modal heading via <code>aria-labelledby="modal-title"</code>.</li>
+          <li><strong>Focus Containment (Trap):</strong> Tabbing forwards from the last focusable element wraps back to the first; Shift-Tabbing backwards from the first element wraps to the last.</li>
+          <li><strong>Keyboard Dismissal:</strong> Pressing the <code>Escape</code> key closes the modal immediately.</li>
+          <li><strong>Focus Restoration:</strong> When the modal closes, focus <em>must</em> return to the button or trigger element that originally opened it.</li>
+        </ol>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JavaScript (Robust Focus Trap Implementation)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">export class AccessibleModal {
+  constructor(modalElement, triggerElement) {
+    this.modal = modalElement;
+    this.trigger = triggerElement;
+    this.focusableSelectors = [
+      'a[href]', 'button:not([disabled])', 'textarea:not([disabled])',
+      'input:not([disabled])', 'select:not([disabled])', '[tabindex="0"]'
+    ].join(', ');
+    
+    this.handleKeyDown = this.handleKeyDown.bind(this);
+  }
+
+  open() {
+    this.modal.removeAttribute('hidden');
+    this.modal.setAttribute('aria-modal', 'true');
+    this.modal.setAttribute('role', 'dialog');
+
+    // Get all focusable elements inside the modal
+    this.focusableElements = Array.from(this.modal.querySelectorAll(this.focusableSelectors));
+    this.firstFocusable = this.focusableElements[0];
+    this.lastFocusable = this.focusableElements[this.focusableElements.length - 1];
+
+    // Move initial focus into modal
+    if (this.firstFocusable) {
+      this.firstFocusable.focus();
+    } else {
+      this.modal.setAttribute('tabindex', '-1');
+      this.modal.focus();
+    }
+
+    document.addEventListener('keydown', this.handleKeyDown);
+  }
+
+  close() {
+    this.modal.setAttribute('hidden', '');
+    document.removeEventListener('keydown', this.handleKeyDown);
+
+    // RESTORE FOCUS to original trigger element
+    if (this.trigger) {
+      this.trigger.focus();
+    }
+  }
+
+  handleKeyDown(event) {
+    // 1. ESC closes modal
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.close();
+      return;
+    }
+
+    // 2. Trap TAB key
+    if (event.key === 'Tab') {
+      if (event.shiftKey) {
+        // Shift + Tab: backwards
+        if (document.activeElement === this.firstFocusable) {
+          event.preventDefault();
+          this.lastFocusable.focus();
+        }
+      } else {
+        // Tab: forwards
+        if (document.activeElement === this.lastFocusable) {
+          event.preventDefault();
+          this.firstFocusable.focus();
+        }
+      }
+    }
+  }
+}</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Accessible Forms and Dynamic Error Validation</h2>
+        <p>
+          Forms represent the highest-friction interaction points on the web. Missing labels, unannounced validation errors, and lost input focus lead directly to failed checkouts and user abandonment.
+        </p>
+
+        <h3>A. Explicit Label Association</h3>
+        <p>
+          Placeholders are <strong>never</strong> a substitute for labels. Placeholders disappear once the user begins typing, lack high contrast, and are frequently skipped by screen readers. Every input requires an explicit <code>&lt;label for="id"&gt;</code>:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">HTML (Accessible Form Pattern)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-html">&lt;form id="checkout-form" novalidate&gt;
+  &lt;div class="form-group"&gt;
+    &lt;label for="email-field"&gt;Email Address &lt;span aria-hidden="true"&gt;*&lt;/span&gt;&lt;/label&gt;
+    &lt;input 
+      type="email" 
+      id="email-field" 
+      name="email" 
+      required 
+      aria-required="true"
+      aria-describedby="email-hint email-error"
+      autocomplete="email"&gt;
+    &lt;span id="email-hint" class="hint-text"&gt;We will send your order confirmation here.&lt;/span&gt;
+    &lt;span id="email-error" class="error-msg" role="alert" hidden&gt;Please enter a valid email address.&lt;/span&gt;
+  &lt;/div&gt;
+
+  &lt;button type="submit"&gt;Complete Purchase&lt;/button&gt;
+&lt;/form&gt;</code></pre>
+        </div>
+
+        <h3>B. Announcing Errors and Shifting Focus</h3>
+        <p>
+          When form submission fails client-side validation:
+        </p>
+        <ol>
+          <li>Mark the failing input with <code>aria-invalid="true"</code>.</li>
+          <li>Unhide the error container with <code>role="alert"</code> so screen readers speak the error immediately.</li>
+          <li>Programmatically shift browser focus to the first invalid input so keyboard users can immediately fix the problem without searching through the page.</li>
+        </ol>
+
+        <!-- Section 6 -->
+        <h2>6. Automated and Manual Accessibility Testing Pipelines</h2>
+        <p>
+          Building accessible products requires combining automated testing gates in CI/CD with hands-on manual verification.
+        </p>
+
+        <h3>A. What Automated Testing Can (and Cannot) Catch</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Automated Auditing (axe-core / Lighthouse / ESLint-plugin-jsx-a11y)</th>
+                <th>Manual Auditing Required (Screen Readers / Keyboard Walkthrough)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Catches missing <code>alt</code> attributes on images (e.g., <code>&lt;img&gt;</code> without alt).</td>
+                <td>Evaluates whether the <code>alt</code> text is meaningful or redundant (e.g., <code>alt="image.jpg"</code> passes automated checks!).</td>
+              </tr>
+              <tr>
+                <td>Detects insufficient mathematical color contrast ratios between text and background.</td>
+                <td>Evaluates visual clarity over background images or CSS gradients.</td>
+              </tr>
+              <tr>
+                <td>Detects duplicate HTML element IDs that break ARIA associations.</td>
+                <td>Verifies logical tab order when CSS Flexbox <code>order</code> or CSS Grid disrupts DOM layout.</td>
+              </tr>
+              <tr>
+                <td>Detects invalid or misspelled ARIA role attributes.</td>
+                <td>Tests whether focus trap cycles correctly and returns focus upon modal closing.</td>
+              </tr>
+              <tr>
+                <td><strong>Covers ~30% – 40% of all WCAG issues.</strong></td>
+                <td><strong>Covers the remaining 60% – 70% of user experience barriers.</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JavaScript (Automated CI Testing with Vitest and axe-core)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { render } from '@testing-library/react';
+import { axe, toHaveNoViolations } from 'jest-axe';
+import { expect, test } from 'vitest';
+import { UserProfileForm } from './UserProfileForm';
+
+expect.extend(toHaveNoViolations);
+
+test('UserProfileForm has zero automated accessibility violations', async () => {
+  const { container } = render(&lt;UserProfileForm /&gt;);
+  const results = await axe(container);
+  
+  // Fails the test if any WCAG AA violations exist
+  expect(results).toHaveNoViolations();
+});</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Hands-on Practice Exercises</h2>
+        
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-badge">Exercise 43.1</span>
+            <h3 class="exercise-title">Building an Accessible Accordion (Collapsible FAQ) Component</h3>
+          </div>
+          <p>
+            Build an accessible FAQ accordion in vanilla JavaScript. Requirements:
+          </p>
+          <ul>
+            <li>Trigger button must use <code>aria-expanded</code> (toggling between <code>"true"</code> and <code>"false"</code>).</li>
+            <li>Trigger button must connect to the content section using <code>aria-controls="panel-id"</code>.</li>
+            <li>Content panel must use <code>role="region"</code> and <code>aria-labelledby="button-id"</code>.</li>
+            <li>Hidden content panels must use the HTML <code>hidden</code> attribute so they are skipped by both keyboard navigation and screen readers.</li>
+          </ul>
+          
+          <details class="exercise-solution">
+            <summary class="solution-toggle">View Architectural Solution</summary>
+            <div class="solution-content">
+              <div class="code-block">
+                <div class="code-header">
+                  <span class="code-lang">HTML &amp; JavaScript (Accessible Accordion)</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-html">&lt;div class="accordion"&gt;
+  &lt;h3&gt;
+    &lt;button 
+      type="button" 
+      id="faq-btn-1" 
+      class="accordion-trigger" 
+      aria-expanded="false" 
+      aria-controls="faq-panel-1"&gt;
+      Can I cancel my subscription anytime?
+      &lt;span class="accordion-icon" aria-hidden="true"&gt;+&lt;/span&gt;
+    &lt;/button&gt;
+  &lt;/h3&gt;
+  &lt;div 
+    id="faq-panel-1" 
+    class="accordion-panel" 
+    role="region" 
+    aria-labelledby="faq-btn-1" 
+    hidden&gt;
+    &lt;p&gt;Yes, you can cancel your subscription from your account settings at any time with no cancellation penalties.&lt;/p&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+document.querySelectorAll('.accordion-trigger').forEach(trigger => {
+  trigger.addEventListener('click', () => {
+    const isExpanded = trigger.getAttribute('aria-expanded') === 'true';
+    const panelId = trigger.getAttribute('aria-controls');
+    const panel = document.getElementById(panelId);
+
+    // Toggle ARIA state
+    trigger.setAttribute('aria-expanded', String(!isExpanded));
+    
+    // Toggle content visibility
+    if (isExpanded) {
+      panel.setAttribute('hidden', '');
+    } else {
+      panel.removeAttribute('hidden');
+    }
+  });
+});
+&lt;/script&gt;</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-badge">Exercise 43.2</span>
+            <h3 class="exercise-title">Building an Accessible Combobox Autocomplete Dropdown</h3>
+          </div>
+          <p>
+            Create an accessible autocomplete search input in vanilla JavaScript compliant with the W3C ARIA Combobox design pattern. Requirements:
+          </p>
+          <ul>
+            <li><code>&lt;input&gt;</code> has <code>role="combobox"</code>, <code>aria-autocomplete="list"</code>, <code>aria-expanded</code>, and <code>aria-controls="suggestions-list"</code>.</li>
+            <li>Arrow Down / Arrow Up moves virtual selection through items using <code>aria-activedescendant="item-id"</code>.</li>
+            <li>Pressing Enter selects the active suggestion, and pressing Escape closes the suggestions list.</li>
+          </ul>
+
+          <details class="exercise-solution">
+            <summary class="solution-toggle">View Architectural Solution</summary>
+            <div class="solution-content">
+              <div class="code-block">
+                <div class="code-header">
+                  <span class="code-lang">JavaScript (ARIA Combobox Implementation)</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-javascript">export class AccessibleCombobox {
+  constructor(inputEl, listEl, items) {
+    this.input = inputEl;
+    this.list = listEl;
+    this.items = items;
+    this.activeIndex = -1;
+
+    this.initAttributes();
+    this.bindEvents();
+  }
+
+  initAttributes() {
+    this.input.setAttribute('role', 'combobox');
+    this.input.setAttribute('aria-autocomplete', 'list');
+    this.input.setAttribute('aria-expanded', 'false');
+    this.input.setAttribute('aria-controls', this.list.id);
+    this.list.setAttribute('role', 'listbox');
+  }
+
+  bindEvents() {
+    this.input.addEventListener('input', () => this.filterItems());
+    this.input.addEventListener('keydown', (e) => this.handleKeyDown(e));
+  }
+
+  handleKeyDown(e) {
+    const visibleItems = this.list.querySelectorAll('[role="option"]');
+    if (!visibleItems.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.activeIndex = (this.activeIndex + 1) % visibleItems.length;
+      this.setActiveItem(visibleItems);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.activeIndex = (this.activeIndex - 1 + visibleItems.length) % visibleItems.length;
+      this.setActiveItem(visibleItems);
+    } else if (e.key === 'Enter' && this.activeIndex >= 0) {
+      e.preventDefault();
+      this.selectItem(visibleItems[this.activeIndex]);
+    } else if (e.key === 'Escape') {
+      this.close();
+    }
+  }
+
+  setActiveItem(items) {
+    items.forEach((item, idx) => {
+      if (idx === this.activeIndex) {
+        item.setAttribute('aria-selected', 'true');
+        item.classList.add('active');
+        this.input.setAttribute('aria-activedescendant', item.id);
+        item.scrollIntoView({ block: 'nearest' });
+      } else {
+        item.removeAttribute('aria-selected');
+        item.classList.remove('active');
+      }
+    });
+  }
+
+  selectItem(optionEl) {
+    this.input.value = optionEl.textContent;
+    this.close();
+  }
+
+  close() {
+    this.list.setAttribute('hidden', '');
+    this.input.setAttribute('aria-expanded', 'false');
+    this.input.removeAttribute('aria-activedescendant');
+    this.activeIndex = -1;
+  }
+}</code></pre>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 8: Interview Questions -->
+        <section class="chapter-qa-section">
+          <h2>20 Comprehensive Accessibility Interview Questions &amp; Answers</h2>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What does the POUR acronym represent in the WCAG accessibility guidelines?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "POUR stands for Perceivable, Operable, Understandable, and Robust. Perceivable means content can be consumed through multiple senses—like text alternatives for images and high contrast. Operable means the UI can be controlled by all users—especially full keyboard operability without traps. Understandable means predictable navigation and clear language. Robust means compatible across current and future user agents, including diverse assistive technologies."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">What is the First Rule of ARIA?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The First Rule of ARIA is: If you can use a native HTML element or attribute with the built-in semantics and behaviors you need, do so instead of re-purposing an element and adding ARIA. For example, use a native `<button>` element rather than a `<div role='button'>`. Native elements provide keyboard focus, Space/Enter activation, and form handling for free without writing fragile custom JavaScript."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">What are the WCAG 2.2 Level AA color contrast requirements for text and UI components?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "For regular body text under 18pt or 14pt bold, WCAG Level AA mandates a minimum contrast ratio of 4.5:1 against its background. For large text—defined as 18pt or 14pt bold and above—the minimum requirement is 3:1. Additionally, non-text UI components such as form input borders, focus indicators, and icons must meet a 3:1 contrast ratio against adjacent colors."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">Explain the difference between tabindex="0", tabindex="-1", and positive tabindex values.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`tabindex='0'` puts a custom element into the natural keyboard tab order based on its position in the DOM. `tabindex='-1'` removes the element from sequential keyboard navigation, but allows it to receive programmatic focus via JavaScript `element.focus()`, which is essential for modal dialogs and error summaries. Positive tabindex values like `tabindex='1'` force elements to the front of the tab sequence, disrupting natural flow; positive tabindex is considered a severe anti-pattern."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What is a Modal Focus Trap and how do you implement one?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A focus trap keeps keyboard focus cycling exclusively inside an open modal dialog, preventing users from accidentally tabbing into inactive background elements. When a user presses Tab on the last focusable element in the modal, JavaScript intercepts the event and wraps focus back to the first element. Conversely, Shift-Tab on the first element wraps to the last. Additionally, the modal must close on Escape and restore focus back to the opening trigger."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">Why should you never remove CSS focus outlines with outline: none without a replacement?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Removing focus outlines makes an application completely unusable for keyboard navigators, who rely on the visible ring to know where they are on the screen. Instead of disabling outlines with `outline: none`, engineers should use the modern `:focus-visible` pseudo-class. `:focus-visible` displays a high-contrast focus ring specifically when the user interacts via keyboard, while cleanly suppressing it for mouse clicks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">What is the difference between aria-label, aria-labelledby, and aria-describedby?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`aria-label` provides a hidden string directly as the accessible name for an element that has no visible text, like an icon-only button. `aria-labelledby` points to the ID of another visible element in the DOM to serve as the accessible name. `aria-describedby` points to one or more elements that provide secondary, supplementary information or error messages, which screen readers announce after reading the primary label."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">What is an ARIA Live Region, and when do you use polite vs. assertive?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An ARIA live region informs assistive technologies that dynamic content inside an element has updated without the user having to move focus to it. `aria-live='polite'` waits until the user finishes typing or the screen reader finishes speaking before announcing the change, suitable for search results counts or shopping cart totals. `aria-live='assertive'` (or `role='alert'`) interrupts whatever is currently being spoken immediately, reserved strictly for critical errors and time-sensitive alerts."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">Why are input placeholders not acceptable replacements for <label> tags?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Placeholders fail accessibility in several ways: they disappear the moment a user begins typing, depriving users of context when reviewing fields; they typically have low, failing color contrast; and many screen readers ignore placeholder text altogether or treat it inconsistently. Every input requires an explicit `<label for='id'>` or `<label>` wrapper to guarantee accessible name computation and a large clickable target."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is the purpose of a skip-to-content link and where should it be placed in the DOM?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A skip link allows keyboard and screen reader users to bypass repetitive global navigation headers and jump directly to the primary page content. It must be placed as the very first focusable element inside the `<body>` tag. It is typically hidden off-screen with CSS and animated into view when it receives keyboard `:focus`, linking to `<main id='main-content' tabindex='-1'>`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">How do you make client-side SPA route transitions accessible to screen reader users?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In a Single Page Application, client-side route changes do not trigger a browser page refresh, leaving screen reader users unaware that a transition occurred. To fix this, on route change we must: first, update `document.title`; second, move focus to the page's top-level `<h1>` or `<main tabindex='-1'>` container; and third, announce the navigation using a polite `aria-live` announcer announcing 'Navigated to Billing Page'."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">When should an image have an empty alt attribute (alt="")?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An image should have `alt=''` when it is purely decorative, such as an ornamental background shape, a visual divider, or an icon adjacent to visible text that already explains its purpose (like a cart icon next to 'Shopping Cart'). The empty `alt=''` informs the screen reader to skip the image entirely. If you omit the `alt` attribute altogether, the screen reader will fall back to reading the raw image filename, creating auditory clutter."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What are the limitations of automated accessibility testing tools like axe-core or Lighthouse?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Automated tools can only detect approximately 30% to 40% of WCAG violations. They excel at catching rule-based issues like missing alt attributes, duplicate IDs, or mathematical color contrast failures. However, they cannot evaluate semantic quality—such as whether alt text accurately describes an image, whether focus order is logical, whether keyboard focus traps work, or whether custom widgets operate properly with screen readers. Automated tests must always be paired with manual keyboard and screen reader audits."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">How does aria-hidden="true" work and what are the dangers of misusing it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`aria-hidden='true'` removes an element and all of its child nodes from the accessibility tree, hiding them completely from screen readers while leaving them visually visible. It is safe for decorative SVGs or hidden background content. The danger is applying `aria-hidden='true'` to an element that contains focusable children or interactive buttons; keyboard users will tab into invisible 'ghost' elements that screen readers cannot identify."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">How do you structure an accessible form validation error response?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "When validation fails, I mark the invalid input with `aria-invalid='true'` and link it to the error text message using `aria-describedby='error-id'`. The error message element uses `role='alert'` so the error is spoken immediately. Finally, on submit failure, I programmatically focus the first invalid input field so keyboard users can immediately fix the input without having to search for the error."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What is the WAI-ARIA activedescendant pattern and when is it preferred over moving DOM focus?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`aria-activedescendant` is used in composite widgets like autocomplete comboboxes or dropdown lists where DOM focus remains permanently on the text input while arrow keys navigate suggestions. The input's `aria-activedescendant` attribute is dynamically updated to match the ID of the currently selected option. This informs assistive technologies of the active choice without pulling physical browser focus away from the input where the user is typing."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">How do CSS Logical Properties improve internationalization and RTL layout accessibility?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "CSS Logical Properties replace physical directional words (left, right, top, bottom) with flow-relative terms based on writing mode: `margin-inline-start`, `margin-inline-end`, `padding-block`, and `inset-inline-start`. When rendering right-to-left (RTL) languages like Arabic or Hebrew (`<html dir='rtl'>`), margins and paddings automatically mirror themselves without requiring duplicate CSS overrides or fragile class hacks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">Why must the <html> element always specify a lang attribute?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The `lang` attribute (e.g. `<html lang='en'>`) informs screen readers which text-to-speech pronunciation engine and dictionary rules to load. Without a valid `lang` attribute, screen readers will default to the user's operating system language, resulting in severe mispronunciation of words if an English page is read by a French speech synthesizer."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">How do you prevent animation and motion sickness for users with vestibular disorders?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Users with vestibular disorders can experience nausea and dizziness from parallax scrolling or large motion effects. We support the CSS media query `@media (prefers-reduced-motion: reduce)`. Inside this query, we disable non-essential animations, eliminate parallax transforms, or replace complex motion with simple, subtle opacity crossfades."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you establish an accessibility culture and regression prevention in an engineering team?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I establish a multi-layered approach: First, shift left by embedding `eslint-plugin-jsx-a11y` in the developer editor. Second, integrate automated `axe-core` tests into CI/CD to block PRs with automated violations. Third, build accessible primitives into our shared design system components so engineers get accessible modal and combobox behaviors by default. Finally, mandate basic manual keyboard checklist verification as part of every feature code review."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

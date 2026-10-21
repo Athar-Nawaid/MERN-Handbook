@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 28: Production API Design | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master production REST API design: Richardson Maturity Model, HTTP semantics, RFC 7807 Problem Details, Idempotency-Key pattern, Cursor pagination, OpenAPI contracts, and secure Webhook delivery.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="28">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VI — API Design, Security, and Software Engineering</div>
+          <h1 class="chapter-title">Chapter 28: Production API Design</h1>
+          <p class="chapter-lead">
+            Architecting robust, developer-friendly, and backward-compatible web interfaces: RESTful constraints, the Richardson Maturity Model, semantic status code taxonomy, RFC 7807 error standardization, the Idempotency-Key header pattern, Keyset cursor pagination, API versioning economics, OpenAPI contracts, and secure HMAC webhook architectures.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">REST Architecture</span>
+              <span class="meta-pill">RFC 7807 &amp; Idempotency</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Examine Roy Fielding’s six core <strong>REST Architectural Constraints</strong> and understand why most "REST APIs" are actually pragmatic HTTP RPC interfaces.</li>
+            <li>Classify APIs using the <strong>Richardson Maturity Model</strong> from Swamp of POX (Level 0) to HATEOAS (Level 3).</li>
+            <li>Master HTTP verb safety, idempotency, and status code semantics (e.g., <code>201</code> vs <code>202</code>, <code>401</code> vs <code>403</code>, <code>409</code> vs <code>422</code>).</li>
+            <li>Implement the IETF standard <strong>RFC 7807 Problem Details</strong> for machine-readable, consistent error envelopes.</li>
+            <li>Build a fault-tolerant, Redis-backed <strong>Idempotency-Key</strong> middleware to prevent duplicate billing charges during network retries.</li>
+            <li>Solve the pagination drift and performance collapse problems by transitioning from <strong>Offset/Limit</strong> to <strong>Keyset Cursor Pagination</strong>.</li>
+            <li>Evaluate API versioning strategies: URI paths, custom headers, and MIME content negotiation.</li>
+            <li>Design and verify reliable <strong>Webhook architectures</strong> using HMAC SHA-256 signatures, replay timestamp windows, and dead-letter queues.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. REST Foundations &amp; Architectural Constraints</h2>
+        <p>
+          <strong>Representational State Transfer (REST)</strong> is an architectural style formulated by Roy Fielding in his 2000 doctoral dissertation. Unlike SOAP or gRPC, REST is not a rigid protocol or standard; it is a set of design constraints intended to induce scalability, loose coupling, visibility, reliability, and simplicity across distributed hypermedia systems.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Constraint</th>
+                <th>Architectural Mechanism</th>
+                <th>Engineering Benefit</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>1. Client-Server Separation</strong></td>
+                <td>UI concerns are strictly separated from data storage and business logic across well-defined interfaces.</td>
+                <td>Allows frontend clients (React SPA, mobile apps, CLI) to evolve independently of the backend database or OS.</td>
+              </tr>
+              <tr>
+                <td><strong>2. Statelessness</strong></td>
+                <td>Every client request contains all context needed to process it. No session state is retained on the server across requests.</td>
+                <td>Enables effortless horizontal scaling across cloud nodes without sticky sessions or centralized session synchronization.</td>
+              </tr>
+              <tr>
+                <td><strong>3. Cacheability</strong></td>
+                <td>Responses must explicitly declare themselves cacheable or non-cacheable via HTTP headers (<code>Cache-Control</code>, <code>ETag</code>).</td>
+                <td>Eliminates redundant network round-trips, reduces backend load, and decreases client-perceived latency.</td>
+              </tr>
+              <tr>
+                <td><strong>4. Layered System</strong></td>
+                <td>A client cannot ordinarily determine whether it is connected directly to the origin server or to an intermediary proxy, CDN, or load balancer.</td>
+                <td>Enables transparent addition of reverse proxies (Nginx), security firewalls (Cloudflare), and caching layers.</td>
+              </tr>
+              <tr>
+                <td><strong>5. Uniform Interface</strong></td>
+                <td>Standardized interaction: identification of resources via URIs, manipulation of resources through representations, self-descriptive messages, and hypermedia (HATEOAS).</td>
+                <td>Decouples the client from server implementation details; enables universal tooling (browsers, cURL, Postman).</td>
+              </tr>
+              <tr>
+                <td><strong>6. Code on Demand (Optional)</strong></td>
+                <td>Servers can extend client functionality by transferring executable code (e.g., compiled WebAssembly or JavaScript applets).</td>
+                <td>Reduces pre-installed client dependencies, though rarely utilized in pure backend REST APIs.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ The Industry Reality: Pragmatic REST vs Pure REST</div>
+          <p>
+            In technical interviews, acknowledge that 99% of modern "REST APIs" (including GitHub, Stripe, and Twilio) are actually <strong>Pragmatic HTTP APIs</strong> (Richardson Level 2). They utilize JSON over HTTP, semantic verbs, and resource-oriented URIs, but intentionally omit HATEOAS hypermedia links because client-side state engines and mobile SDKs prefer static, typed contracts (like TypeScript types generated from OpenAPI) over dynamic link discovery.
+          </p>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. The Richardson Maturity Model</h2>
+        <p>
+          Developed by Leonard Richardson and popularized by Martin Fowler, this model grades the degree to which an API embraces the core elements of the REST architectural style.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Richardson Maturity Model Levels</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">+-------------------------------------------------------------------------+
+| Level 3: Hypermedia Controls (HATEOAS)                                 |
+|          Responses include navigational links guiding client workflow   |
+|          e.g., &quot;_links&quot;: { &quot;pay&quot;: { &quot;href&quot;: &quot;/orders/102/payments&quot; } }  |
++-------------------------------------------------------------------------+
+                                    ^
++-------------------------------------------------------------------------+
+| Level 2: HTTP Verbs &amp; Status Codes                                      |
+|          Uses GET, POST, PUT, PATCH, DELETE + 200, 201, 204, 404, 409   |
+|          Distinguishes safe vs idempotent actions accurately            |
++-------------------------------------------------------------------------+
+                                    ^
++-------------------------------------------------------------------------+
+| Level 1: Resources (Individual URIs)                                   |
+|          Multiple endpoints: /users, /orders/42, /products              |
+|          Still frequently uses POST for everything                      |
++-------------------------------------------------------------------------+
+                                    ^
++-------------------------------------------------------------------------+
+| Level 0: The Swamp of POX (Plain Old XML / RPC)                         |
+|          Single endpoint (e.g., /api/service), POST-only,               |
+|          Action &amp; arguments hidden inside request payload body          |
++-------------------------------------------------------------------------+</code></pre>
+        </div>
+
+        <h3>Deconstructing the Levels</h3>
+        <ul>
+          <li><strong>Level 0 (The Swamp of POX):</strong> Utilizes HTTP solely as a transport tunnel. All requests are routed to a single endpoint (e.g., <code>POST /api/endpoint</code>) with the action name specified in the payload (like XML-RPC, SOAP, or JSON-RPC). HTTP headers, methods, and status codes are ignored (always returning <code>200 OK</code> with an internal error code).</li>
+          <li><strong>Level 1 (Resources):</strong> Replaces the monolithic endpoint with discrete resource URIs (e.g., <code>/api/orders</code>, <code>/api/orders/501</code>). However, operations often still abuse <code>POST</code> (e.g., <code>POST /api/orders/501/delete</code>).</li>
+          <li><strong>Level 2 (HTTP Verbs &amp; Status Codes):</strong> Aligns HTTP methods strictly to actions (<code>GET</code> for retrieval, <code>POST</code> for creation, <code>DELETE</code> for removal) and maps execution outcomes to official HTTP status codes (<code>201 Created</code>, <code>404 Not Found</code>, <code>409 Conflict</code>). Most production cloud APIs reside here.</li>
+          <li><strong>Level 3 (Hypermedia Controls / HATEOAS):</strong> <em>Hypermedia As The Engine Of Application State</em>. API responses include dynamic hypermedia links indicating permissible subsequent state transitions. The client requires zero hardcoded URL routes; it navigates the API purely by discovering links embedded in returned resources.</li>
+        </ul>
+
+        <!-- Section 3 -->
+        <h2>3. HTTP Methods: Safety, Idempotency &amp; Status Code Taxonomy</h2>
+        <p>
+          Two foundational properties define HTTP method semantics in RFC 9110: <strong>Safety</strong> and <strong>Idempotency</strong>.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>HTTP Verb</th>
+                <th>Safe?</th>
+                <th>Idempotent?</th>
+                <th>Primary Use Case &amp; Expected Response</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>GET</code></td>
+                <td>✅ Yes</td>
+                <td>✅ Yes</td>
+                <td>Read-only resource retrieval. Must never alter server state. Returns <code>200 OK</code> or <code>404 Not Found</code>.</td>
+              </tr>
+              <tr>
+                <td><code>HEAD</code></td>
+                <td>✅ Yes</td>
+                <td>✅ Yes</td>
+                <td>Identical to <code>GET</code> but returns headers only (no response body). Used to check file size (<code>Content-Length</code>) or freshness (<code>Last-Modified</code>).</td>
+              </tr>
+              <tr>
+                <td><code>OPTIONS</code></td>
+                <td>✅ Yes</td>
+                <td>✅ Yes</td>
+                <td>Queries communication options and CORS preflight allowances (<code>Allow: GET, POST, OPTIONS</code>).</td>
+              </tr>
+              <tr>
+                <td><code>POST</code></td>
+                <td>❌ No</td>
+                <td>❌ No</td>
+                <td>Creates a subordinate resource or triggers arbitrary server execution. Calling \(N\) times creates \(N\) resources. Returns <code>201 Created</code> with <code>Location</code> header.</td>
+              </tr>
+              <tr>
+                <td><code>PUT</code></td>
+                <td>❌ No</td>
+                <td>✅ Yes</td>
+                <td>Complete replacement of the target resource with the uploaded payload, or creation at a known URI. Calling \(N\) times results in identical state. Returns <code>200 OK</code> or <code>204 No Content</code>.</td>
+              </tr>
+              <tr>
+                <td><code>PATCH</code></td>
+                <td>❌ No</td>
+                <td>⚠️ Not necessarily</td>
+                <td>Applies partial modifications to a resource (e.g., updating a user's phone number). Usually implemented as idempotent, but not guaranteed by RFC 5789 (e.g., JSON Patch operations like <code>{"op": "increment", "value": 5}</code>).</td>
+              </tr>
+              <tr>
+                <td><code>DELETE</code></td>
+                <td>❌ No</td>
+                <td>✅ Yes</td>
+                <td>Removes the identified resource. Subsequent calls return <code>204 No Content</code> or <code>404 Not Found</code>, but final server state remains identical.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">💡 The Core Difference Between Safe and Idempotent</div>
+          <p>
+            An operation is <strong>Safe</strong> if it creates zero side effects on the server (it only reads data). An operation is <strong>Idempotent</strong> if executing it multiple identical times produces the exact same side-effect and end server state as executing it once. All safe methods are naturally idempotent, but not all idempotent methods are safe (e.g., <code>DELETE</code> mutates state, but deleting a user 5 times leaves the user deleted).
+          </p>
+        </div>
+
+        <h3>Critical Status Codes for Full-Stack Interviews</h3>
+        <ul>
+          <li><code>200 OK</code>: Standard success with response payload.</li>
+          <li><code>201 Created</code>: Resource created successfully. Must include a <code>Location: /api/v1/orders/789</code> header pointing to the new resource.</li>
+          <li><code>202 Accepted</code>: Request accepted for asynchronous processing (e.g., video transcoding or batch queue), but processing is not yet complete.</li>
+          <li><code>204 No Content</code>: Action succeeded, but response intentionally has zero body bytes (standard for <code>DELETE</code> or <code>PUT</code>).</li>
+          <li><code>301 Moved Permanently</code> vs <code>302 Found</code>: <code>301</code> is aggressively cached by browsers and search engines; <code>302</code> is temporary redirect without caching.</li>
+          <li><code>304 Not Modified</code>: Conditional GET cache validation (matching <code>If-None-Match</code> ETag). Payload body is omitted to save bandwidth.</li>
+          <li><code>400 Bad Request</code>: Malformed request syntax or unparseable JSON body.</li>
+          <li><code>401 Unauthorized</code>: Missing, invalid, or expired authentication credentials (literally means <em>Unauthenticated</em>).</li>
+          <li><code>403 Forbidden</code>: Authenticated identity lacks permission/privilege to access the target resource (Authorization failure).</li>
+          <li><code>404 Not Found</code>: Target URI does not exist (or concealed intentionally for security).</li>
+          <li><code>409 Conflict</code>: Business rule or database constraint violation (e.g., unique email collision, concurrent edit version clash).</li>
+          <li><code>422 Unprocessable Content</code>: Syntactically valid JSON body that fails semantic schema validation (e.g., negative price, invalid email format).</li>
+          <li><code>429 Too Many Requests</code>: Rate limit exceeded. Should return <code>Retry-After: 60</code> header.</li>
+          <li><code>500 Internal Server Error</code>: Uncaught backend exception or fatal crash.</li>
+          <li><code>502 Bad Gateway</code>: Reverse proxy (Nginx) received an invalid or dropped response from upstream Node.js application.</li>
+          <li><code>503 Service Unavailable</code>: Backend server is temporarily overloaded or undergoing maintenance.</li>
+          <li><code>504 Gateway Timeout</code>: Reverse proxy timed out waiting for upstream application server to reply.</li>
+        </ul>
+
+        <!-- Section 4 -->
+        <h2>4. Standardized Error Contracts: RFC 7807 (Problem Details)</h2>
+        <p>
+          A common anti-pattern in amateur APIs is returning ad-hoc error structures (sometimes <code>{ "error": "msg" }</code>, sometimes <code>{ "message": "msg" }</code>, or worse, <code>{ "status": "fail", "data": null }</code> with a <code>200 OK</code> status code).
+        </p>
+        <p>
+          The Internet Engineering Task Force (IETF) standardized HTTP API error responses in <strong>RFC 7807 (Problem Details for HTTP APIs)</strong> using the media type <code>application/problem+json</code>.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">JSON: RFC 7807 Standard Error Envelope</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-json">{
+  &quot;type&quot;: &quot;https://api.myapp.com/errors/validation-failed&quot;,
+  &quot;title&quot;: &quot;Validation Failed&quot;,
+  &quot;status&quot;: 422,
+  &quot;detail&quot;: &quot;Your request parameters failed semantic validation checks.&quot;,
+  &quot;instance&quot;: &quot;/api/v1/orders/draft-884&quot;,
+  &quot;invalidParams&quot;: [
+    {
+      &quot;name&quot;: &quot;quantity&quot;,
+      &quot;reason&quot;: &quot;Quantity must be a positive integer between 1 and 100.&quot;
+    },
+    {
+      &quot;name&quot;: &quot;paymentMethodId&quot;,
+      &quot;reason&quot;: &quot;Payment method 'pm_expired' has expired.&quot;
+    }
+  ]
+}</code></pre>
+        </div>
+
+        <h3>Production Express RFC 7807 Error Handler</h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Express RFC 7807 Centralized Middleware</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import { Request, Response, NextFunction } from &#39;express&#39;;
+
+export interface AppErrorOptions {
+  type: string;
+  title: string;
+  status: number;
+  detail: string;
+  invalidParams?: Array&lt;{ name: string; reason: string }&gt;;
+}
+
+export class AppError extends Error {
+  public readonly type: string;
+  public readonly title: string;
+  public readonly status: number;
+  public readonly detail: string;
+  public readonly invalidParams?: Array&lt;{ name: string; reason: string }&gt;;
+
+  constructor(opts: AppErrorOptions) {
+    super(opts.detail);
+    this.type = opts.type;
+    this.title = opts.title;
+    this.status = opts.status;
+    this.detail = opts.detail;
+    this.invalidParams = opts.invalidParams;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
+// Global Error Handler Middleware
+export function rfc7807ErrorHandler(
+  err: Error,
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  // Set RFC 7807 content type
+  res.setHeader(&#39;Content-Type&#39;, &#39;application/problem+json&#39;);
+
+  if (err instanceof AppError) {
+    res.status(err.status).json({
+      type: err.type,
+      title: err.title,
+      status: err.status,
+      detail: err.detail,
+      instance: req.originalUrl,
+      ...(err.invalidParams ? { invalidParams: err.invalidParams } : {})
+    });
+    return;
+  }
+
+  // Handle unexpected internal server crashes
+  const isDev = process.env.NODE_ENV !== &#39;production&#39;;
+  res.status(500).json({
+    type: &#39;https://api.myapp.com/errors/internal-server-error&#39;,
+    title: &#39;Internal Server Error&#39;,
+    status: 500,
+    detail: isDev ? err.message : &#39;An unexpected internal fault occurred.&#39;,
+    instance: req.originalUrl,
+    ...(isDev ? { stack: err.stack } : {})
+  });
+}</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Idempotency in Non-Idempotent Operations: The Idempotency-Key Pattern</h2>
+        <p>
+          In distributed networks, communication over HTTP is fundamentally unreliable. When a client sends a <code>POST /api/v1/payments</code> request to charge $100, the server might successfully charge the user's card in its database, but the network connection may drop before the <code>200 OK</code> response reaches the client.
+        </p>
+        <p>
+          If the client blindly retries the <code>POST</code> request, the user gets double-charged. The industry standard solution pioneered by Stripe and standardized by the IETF is the <strong><code>Idempotency-Key</code> header</strong>.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Distributed Idempotency Key Workflow</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Client                         Express Backend                     Redis Cache
+  |                                   |                                |
+  |-- POST /charge (Key: &quot;abc-123&quot;) -&gt;|                                |
+  |                                   |-- SET &quot;idem:abc-123&quot; &quot;LOCKED&quot; -&gt;| (Lock acquired)
+  |                                   |   NX EX 120                    |
+  |                                   |&lt;--------- OK ------------------|
+  |                                   |                                |
+  |                                   |-- Execute Payment in DB...     |
+  |                                   |-- Cache Response in Redis -----&gt;| Store status &amp; body
+  |                                   |   SET &quot;idem:abc-123&quot;           | TTL 24 hours
+  |&lt;-- 201 Created { id: &quot;ch_99&quot; } ---|                                |
+  |                                   |                                |
+  | (Network drops or Client retries) |                                |
+  |-- POST /charge (Key: &quot;abc-123&quot;) -&gt;|                                |
+  |                                   |-- GET &quot;idem:abc-123&quot; ----------&gt;|
+  |                                   |&lt;-- Return Cached Response -----| (Cache Hit)
+  |                                   |                                |
+  |&lt;-- 201 Created { id: &quot;ch_99&quot; } ---| (Exact cached response replayed! Zero DB duplicate charge)
+  |                                   |                                |</code></pre>
+        </div>
+
+        <h3>Production Redis Idempotency Middleware</h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Production Idempotency Middleware</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import { Request, Response, NextFunction } from &#39;express&#39;;
+import Redis from &#39;ioredis&#39;;
+
+const redis = new Redis(process.env.REDIS_URL || &#39;redis://localhost:6379&#39;);
+
+export function idempotencyMiddleware(ttlSeconds = 86400) {
+  return async (req: Request, res: Response, next: NextFunction): Promise&lt;void&gt; =&gt; {
+    // Idempotency keys only apply to state-mutating requests (POST, PATCH)
+    if (req.method !== &#39;POST&#39; &amp;&amp; req.method !== &#39;PATCH&#39;) {
+      return next();
+    }
+
+    const idempotencyKey = req.header(&#39;Idempotency-Key&#39;);
+    if (!idempotencyKey) {
+      return next(); // Or return 400 if strictly required
+    }
+
+    const redisKey = `idempotency:${idempotencyKey}`;
+
+    try {
+      // 1. Check if we already processed this exact key
+      const cached = await redis.get(redisKey);
+      if (cached) {
+        if (cached === &#39;IN_PROGRESS&#39;) {
+          res.status(409).json({
+            type: &#39;https://api.myapp.com/errors/concurrent-request&#39;,
+            title: &#39;Conflict&#39;,
+            status: 409,
+            detail: &#39;A request with this Idempotency-Key is currently being processed.&#39;
+          });
+          return;
+        }
+
+        // Return exact saved response
+        const { status, headers, body } = JSON.parse(cached);
+        res.set(headers);
+        res.setHeader(&#39;Idempotent-Replayed&#39;, &#39;true&#39;);
+        res.status(status).send(body);
+        return;
+      }
+
+      // 2. Acquire atomic distributed lock (expires in 2 minutes to prevent stuck locks)
+      const acquired = await redis.set(redisKey, &#39;IN_PROGRESS&#39;, &#39;EX&#39;, 120, &#39;NX&#39;);
+      if (!acquired) {
+        res.status(409).json({
+          title: &#39;Concurrent Request In-Flight&#39;,
+          status: 409,
+          detail: &#39;Simultaneous request detected with the same Idempotency-Key.&#39;
+        });
+        return;
+      }
+
+      // 3. Intercept res.send to cache response upon completion
+      const originalSend = res.send.bind(res);
+      res.send = (body: any): Response =&gt; {
+        // Cache only successful completions (2xx status codes)
+        if (res.statusCode &gt;= 200 &amp;&amp; res.statusCode &lt; 300) {
+          const payload = {
+            status: res.statusCode,
+            headers: { &#39;content-type&#39;: res.get(&#39;content-type&#39;) },
+            body: typeof body === &#39;string&#39; ? body : JSON.stringify(body)
+          };
+          redis.set(redisKey, JSON.stringify(payload), &#39;EX&#39;, ttlSeconds).catch(console.error);
+        } else {
+          // If request failed, release lock so client can retry with same key
+          redis.del(redisKey).catch(console.error);
+        }
+        return originalSend(body);
+      };
+
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Pagination Strategies: Offset vs. Keyset Cursor</h2>
+        <p>
+          APIs must never return unbounded collections. There are two primary architectural patterns for paginating data:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Criterion</th>
+                <th>Offset / Limit Pagination</th>
+                <th>Keyset / Cursor Pagination</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Query Mechanism</strong></td>
+                <td><code>SELECT * FROM orders ORDER BY id LIMIT 20 OFFSET 100000;</code></td>
+                <td><code>SELECT * FROM orders WHERE id &gt; 100000 ORDER BY id LIMIT 20;</code></td>
+              </tr>
+              <tr>
+                <td><strong>Time Complexity</strong></td>
+                <td>\(\mathcal{O}(N)\): Database must read, parse, and discard all 100,000 skipped rows before returning 20.</td>
+                <td>\(\mathcal{O}(\log N)\): Database performs a direct B-Tree index seek to <code>id = 100000</code> and reads 20 rows.</td>
+              </tr>
+              <tr>
+                <td><strong>Offset Drift Hazard</strong></td>
+                <td><strong>High:</strong> If a record is inserted on page 1 while the user is reading page 2, all items shift down, causing duplicate rows or missing rows.</td>
+                <td><strong>Zero:</strong> Cursors anchor to a fixed immutable record identity. Concurrent writes do not shift the cursor pointer.</td>
+              </tr>
+              <tr>
+                <td><strong>Jump to Arbitrary Page</strong></td>
+                <td>Easy (User can click "Go to Page 45").</td>
+                <td>Impossible (Client can only navigate forward or backward via opaque cursor tokens).</td>
+              </tr>
+              <tr>
+                <td><strong>Best Fit</strong></td>
+                <td>Internal admin dashboards with tiny datasets (&lt;10k rows) and random page hopping.</td>
+                <td>High-volume public APIs, mobile infinite feeds, real-time event streams (Twitter, Slack, Stripe).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Cursor Pagination Contract &amp; Implementation</h3>
+        <p>
+          In a production cursor API, the cursor should be an opaque, Base64-encoded string representing the composite sorting columns (e.g., <code>created_at</code> and <code>id</code> for tie-breaking).
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Production Keyset Cursor Query &amp; Envelope</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import { Request, Response } from &#39;express&#39;;
+import { pool } from &#39;../db&#39;;
+
+interface CursorData {
+  createdAt: string;
+  id: string;
+}
+
+function encodeCursor(data: CursorData): string {
+  return Buffer.from(JSON.stringify(data)).toString(&#39;base64url&#39;);
+}
+
+function decodeCursor(cursor: string): CursorData {
+  const json = Buffer.from(cursor, &#39;base64url&#39;).toString(&#39;utf8&#39;);
+  return JSON.parse(json);
+}
+
+export async function getOrders(req: Request, res: Response): Promise&lt;void&gt; {
+  const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 100);
+  const cursorParam = req.query.cursor as string | undefined;
+
+  let query: string;
+  let params: any[];
+
+  if (cursorParam) {
+    const { createdAt, id } = decodeCursor(cursorParam);
+    // Composite Keyset filtering with deterministic tie-breaking on id
+    query = `
+      SELECT id, user_id, amount, created_at
+      FROM orders
+      WHERE (created_at, id) &lt; ($1, $2)
+      ORDER BY created_at DESC, id DESC
+      LIMIT $3;
+    `;
+    params = [createdAt, id, limit + 1]; // Request limit + 1 to detect hasMore
+  } else {
+    query = `
+      SELECT id, user_id, amount, created_at
+      FROM orders
+      ORDER BY created_at DESC, id DESC
+      LIMIT $1;
+    `;
+    params = [limit + 1];
+  }
+
+  const { rows } = await pool.query(query, params);
+  const hasMore = rows.length &gt; limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+
+  const nextCursor = hasMore &amp;&amp; items.length &gt; 0
+    ? encodeCursor({
+        createdAt: items[items.length - 1].created_at.toISOString(),
+        id: items[items.length - 1].id
+      })
+    : null;
+
+  res.json({
+    data: items,
+    pagination: {
+      limit,
+      hasMore,
+      nextCursor
+    }
+  });
+}</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. API Versioning Strategies</h2>
+        <p>
+          APIs inevitably evolve. Breaking changes (removing a field, altering a data type, changing authentication requirements) must never break existing client applications in production.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Example Pattern</th>
+                <th>Trade-Offs &amp; Analysis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>URI Path Versioning</strong> (Most Common)</td>
+                <td><code>GET /api/v1/users</code><br><code>GET /api/v2/users</code></td>
+                <td>
+                  <strong>Pros:</strong> Highly visible, easy to test in browser/cURL, zero proxy caching issues.<br>
+                  <strong>Cons:</strong> Violates pure REST principle that a URI identifies a resource, not its schema version. Code duplication across route trees.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Custom Header Versioning</strong></td>
+                <td><code>X-API-Version: 2026-10-01</code></td>
+                <td>
+                  <strong>Pros:</strong> Keeps URIs pristine and uniform across versions.<br>
+                  <strong>Cons:</strong> Requires custom client header configuration; CDNs and reverse proxies must include header in cache key (<code>Vary: X-API-Version</code>) or risk serving wrong version.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Accept Header Content Negotiation</strong></td>
+                <td><code>Accept: application/vnd.company.v2+json</code></td>
+                <td>
+                  <strong>Pros:</strong> The strictest alignment with Fielding's REST constraints. Version is treated as media representation.<br>
+                  <strong>Cons:</strong> High client complexity. Awkward to test manually; CDN caching requires strict <code>Vary: Accept</code> headers.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Query Parameter Versioning</strong></td>
+                <td><code>GET /api/users?version=2</code></td>
+                <td>
+                  <strong>Pros:</strong> Easy to specify conditionally or default to v1.<br>
+                  <strong>Cons:</strong> Intermingles resource filtering/query params with architectural version routing; generally discouraged.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 8 -->
+        <h2>8. API Contracts &amp; OpenAPI (Swagger 3.0)</h2>
+        <p>
+          Modern full-stack engineering relies heavily on <strong>Contract-First Development</strong>. An <strong>OpenAPI Specification (OAS 3.0)</strong> defines endpoints, request bodies, query parameters, responses, and authentication schemes in a machine-readable YAML or JSON document.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: The OpenAPI Contract Ecosystem</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">                     +-------------------------+
+                     | OpenAPI 3.0 Spec (YAML) |
+                     +-------------------------+
+                                  |
+         +------------------------+------------------------+
+         |                        |                        |
+         v                        v                        v
++------------------+     +------------------+     +------------------+
+| Interactive Docs |     | Client SDK Gen   |     | Automated Tests  |
+| SwaggerUI /      |     | openapi-generator|     | Prism Mock Server|
+| Redoc UI         |     | -&gt; TypeScript/iOS|     | &amp; Dredd Testing  |
++------------------+     +------------------+     +------------------+</code></pre>
+        </div>
+
+        <h3>Zod-to-OpenAPI: Single Source of Truth</h3>
+        <p>
+          In TypeScript backends, manually maintaining a YAML file alongside Zod validation schemas creates schema divergence. Using libraries like <code>@asteasolutions/zod-to-openapi</code> generates OpenAPI specifications directly from runtime Zod schemas:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Runtime Zod Schema with OpenAPI Metadata</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import { extendZodWithOpenApi } from &#39;@asteasolutions/zod-to-openapi&#39;;
+import { z } from &#39;zod&#39;;
+
+extendZodWithOpenApi(z);
+
+export const CreateUserSchema = z.object({
+  name: z.string().min(2).max(100).openapi({
+    example: &#39;Jane Doe&#39;,
+    description: &#39;Full legal name of the user&#39;
+  }),
+  email: z.string().email().openapi({
+    example: &#39;jane.doe@example.com&#39;,
+    description: &#39;Unique user email address&#39;
+  }),
+  role: z.enum([&#39;admin&#39;, &#39;member&#39;, &#39;guest&#39;]).default(&#39;member&#39;).openapi({
+    example: &#39;member&#39;
+  })
+}).openapi({ ref: &#39;CreateUserInput&#39; });
+
+export type CreateUserInput = z.infer&lt;typeof CreateUserSchema&gt;;</code></pre>
+        </div>
+
+        <!-- Section 9 -->
+        <h2>9. Webhook Architectures &amp; Cryptographic Signatures</h2>
+        <p>
+          A <strong>Webhook</strong> is an inverted API pattern (often called a "Reverse API"): rather than a client polling an API server for updates, the server proactively issues an HTTP <code>POST</code> request to a client-configured destination URL upon domain event occurrences (e.g., <code>invoice.paid</code>, <code>order.shipped</code>).
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Secure Webhook Dispatch and Verification</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Provider (Stripe/GitHub)                                Client Webhook Receiver
+       |                                                         |
+       |-- 1. Event: payment_intent.succeeded                    |
+       |-- 2. Timestamp = Now() (1700000000)                     |
+       |-- 3. Signature = HMAC_SHA256(Secret, Timestamp + Payload)
+       |                                                         |
+       |-- POST /webhook ---------------------------------------&gt;|
+       |   Header: Stripe-Signature: t=1700000000,v1=a8f5e...    |
+       |   Body: raw JSON payload                                |
+       |                                                         |
+       |                                                         |-- 4. Check Timestamp freshness
+       |                                                         |      (Reject if &gt; 5 mins old: anti-replay)
+       |                                                         |-- 5. Recompute HMAC_SHA256
+       |                                                         |      crypto.timingSafeEqual()
+       |                                                         |-- 6. Enqueue job into BullMQ
+       |&lt;-- 200 OK (Acknowledge immediately within 3s) ----------|
+       |                                                         |
+       | (If 500 error or timeout: Retry with exponential backoff|
+       |  1s, 5s, 30s, 5m, 1h, then send to Dead-Letter Queue)   |</code></pre>
+        </div>
+
+        <h3>Production Webhook Receiver with HMAC &amp; Replay Protection</h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Production Webhook Verification Handler</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import crypto from &#39;crypto&#39;;
+import { Request, Response } from &#39;express&#39;;
+
+export function verifyWebhookSignature(
+  rawBody: Buffer,
+  signatureHeader: string | undefined,
+  secret: string,
+  toleranceSeconds = 300
+): boolean {
+  if (!signatureHeader) return false;
+
+  // Header format: t=1700000000,v1=abcdef123456...
+  const parts = signatureHeader.split(&#39;,&#39;).reduce((acc, part) =&gt; {
+    const [k, v] = part.split(&#39;=&#39;);
+    acc[k.trim()] = v.trim();
+    return acc;
+  }, {} as Record&lt;string, string&gt;);
+
+  const timestamp = parseInt(parts.t, 10);
+  const signature = parts.v1;
+
+  if (isNaN(timestamp) || !signature) return false;
+
+  // Replay Attack Defense: Reject signatures older than tolerance window
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - timestamp) &gt; toleranceSeconds) {
+    return false;
+  }
+
+  // Reconstruct signed payload
+  const signedPayload = `${timestamp}.${rawBody.toString(&#39;utf8&#39;)}`;
+  const expectedSignature = crypto
+    .createHmac(&#39;sha256&#39;, secret)
+    .update(signedPayload)
+    .digest(&#39;hex&#39;);
+
+  // Timing-safe comparison to prevent side-channel timing attacks
+  const sigBuffer = Buffer.from(signature, &#39;hex&#39;);
+  const expectedBuffer = Buffer.from(expectedSignature, &#39;hex&#39;);
+
+  if (sigBuffer.length !== expectedBuffer.length) return false;
+  return crypto.timingSafeEqual(sigBuffer, expectedBuffer);
+}
+
+// Express Endpoint (Requires express.raw({ type: &#39;application/json&#39; }))
+export function handleWebhook(req: Request, res: Response): void {
+  const secret = process.env.WEBHOOK_SECRET!;
+  const sigHeader = req.headers[&#39;x-webhook-signature&#39;] as string;
+
+  const isValid = verifyWebhookSignature(req.body, sigHeader, secret);
+  if (!isValid) {
+    res.status(401).send(&#39;Invalid signature&#39;);
+    return;
+  }
+
+  const event = JSON.parse(req.body.toString(&#39;utf8&#39;));
+
+  // Fast ACK: acknowledge receipt immediately, process asynchronously
+  // enqueueJob(event.type, event.data);
+
+  res.status(200).json({ received: true });
+}</code></pre>
+        </div>
+
+        <!-- Section 10 -->
+        <h2>10. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Designing an RFC 7807 Exception Hierarchy</h3>
+        <p>
+          <strong>Scenario:</strong> Create a domain exception class <code>ResourceNotFoundError</code> and a <code>ConflictError</code> that inherit from <code>AppError</code> and integrate with the centralized error handler to produce RFC 7807 responses.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">import { AppError } from &#39;./rfc7807ErrorHandler&#39;;
+
+export class ResourceNotFoundError extends AppError {
+  constructor(resourceName: string, id: string | number) {
+    super({
+      type: &#39;https://api.myapp.com/errors/not-found&#39;,
+      title: &#39;Resource Not Found&#39;,
+      status: 404,
+      detail: `${resourceName} with identifier '${id}' was not found.`
+    });
+  }
+}
+
+export class UniqueConstraintConflictError extends AppError {
+  constructor(field: string, value: string) {
+    super({
+      type: &#39;https://api.myapp.com/errors/conflict&#39;,
+      title: &#39;Conflict&#39;,
+      status: 409,
+      detail: `A record with ${field} '${value}' already exists.`
+    });
+  }
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: Cursor Pagination Parameter Validator</h3>
+        <p>
+          <strong>Scenario:</strong> Write a safe decoder function for incoming base64url cursor queries that guards against malformed input, invalid JSON injection, and unexpected types without crashing the Node.js process.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">import { z } from &#39;zod&#39;;
+
+const CursorPayloadSchema = z.object({
+  createdAt: z.string().datetime(),
+  id: z.string().uuid()
+});
+
+export type ValidCursor = z.infer&lt;typeof CursorPayloadSchema&gt;;
+
+export function safeDecodeCursor(cursor: string | undefined): ValidCursor | null {
+  if (!cursor || typeof cursor !== &#39;string&#39;) return null;
+
+  try {
+    const rawJson = Buffer.from(cursor, &#39;base64url&#39;).toString(&#39;utf8&#39;);
+    const parsed = JSON.parse(rawJson);
+    const result = CursorPayloadSchema.safeParse(parsed);
+    return result.success ? result.data : null;
+  } catch {
+    // Return null if malformed Base64 or non-JSON
+    return null;
+  }
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 11: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>11. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering REST architectural constraints, idempotency mechanics, RFC 7807 error envelopes, cursor pagination, and webhook reliability.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the difference between a Safe and an Idempotent HTTP method?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Safe HTTP method produces zero state mutations or side effects on the server; it only retrieves representations—like GET and HEAD. An Idempotent method can mutate server state, but executing it \(N\) identical times produces the exact same end state as executing it once. For example, DELETE is idempotent because removing resource #10 multiple times leaves it removed, but it is not safe because the first execution alters database state."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is the difference between PUT and PATCH?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "PUT is defined as a complete replacement of the target resource. If an entity has ten fields and the client submits a PUT payload containing only two fields, the remaining eight fields should be overwritten or reset to defaults. PATCH, defined in RFC 5789, applies partial modifications, altering only the attributes specified in the payload while preserving existing unmentioned fields."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">When should an API return 401 Unauthorized vs 403 Forbidden?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "401 Unauthorized represents an Authentication failure: the client has not provided valid identity credentials, or the token is expired. 403 Forbidden represents an Authorization failure: the server knows exactly who the client is, but that authenticated identity lacks sufficient permissions or role privileges to perform the requested operation on that resource."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What does the 204 No Content status code indicate?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "204 No Content indicates that the server successfully fulfilled the request, but intentionally returns an empty response body. It is standard for DELETE operations or updates where the client already has full state and transmitting redundant JSON back across the wire would waste network bandwidth."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is the purpose of the 201 Created status code and what header should accompany it?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "201 Created signifies that a new resource was successfully instantiated as a result of the request. According to HTTP standards, it should be accompanied by a `Location` header containing the absolute or relative URI pointing directly to the newly created resource, such as `Location: /api/v1/users/892`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What is the Richardson Maturity Model and what characterizes Level 2 vs Level 3?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Richardson Maturity Model grades API maturity across four tiers (0 through 3). Level 2 uses discrete resource URIs combined with standard HTTP verbs (GET, POST, PUT, DELETE) and semantic status codes; this is where most production APIs operate. Level 3 introduces HATEOAS, where responses contain hypermedia links instructing the client which actions and state transitions are valid next."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is RFC 7807 (Problem Details for HTTP APIs) and why is it preferred over custom error formats?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "RFC 7807 defines a standardized JSON structure (`application/problem+json`) for HTTP error payloads with five standard attributes: `type`, `title`, `status`, `detail`, and `instance`. It eliminates proprietary, ad-hoc error formats across microservices, allowing client SDKs, API gateways, and monitoring tools to parse error metadata consistently."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">Why does OFFSET pagination degrade in performance at scale, and what is the 'Offset Drift' problem?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`OFFSET N` forces the database engine to perform an O(N) scan: to return 20 rows at `OFFSET 100000`, PostgreSQL must fetch and discard the preceding 100,000 index entries. Furthermore, Offset Drift occurs when new records are inserted while a user navigates between pages, causing existing items to shift forward and appear duplicated on subsequent pages."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">How does Keyset (Cursor) Pagination work and what are its trade-offs?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Keyset pagination anchors to the values of an indexed sort column from the last visible record, querying `WHERE (created_at, id) < (cursor_date, cursor_id) ORDER BY created_at DESC LIMIT 20`. This executes in O(log N) index seek time and completely eliminates page drift. The trade-off is that clients cannot jump to arbitrary page numbers; they can only traverse forward and backward."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">How do you implement an Idempotency-Key pattern in a distributed Node.js/Express environment?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The client passes a unique UUID in the `Idempotency-Key` header. The server attempts an atomic Redis lock (`SET key 'IN_PROGRESS' NX EX 120`). If the key already exists with status 'COMPLETED', the server immediately replays the cached status code, headers, and body without re-executing business logic. If lock acquisition fails because a request is in-flight, it returns 409 Conflict."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Compare URI Path versioning vs Custom Header versioning vs Accept Header content negotiation.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "URI Path versioning (`/v1/orders`) is the most practical and visible, caching cleanly across CDNs without header dependencies. Custom Headers (`X-API-Version: 2`) keep URIs clean but require downstream proxies to configure `Vary: X-API-Version`. Accept Header versioning (`Accept: application/vnd.company.v2+json`) aligns with pure REST principles, but increases client implementation complexity."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">When is a 409 Conflict status code appropriate vs a 422 Unprocessable Content?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Use 422 Unprocessable Content when the request JSON is syntactically valid but fails business field constraints (e.g., negative price, invalid postal code). Use 409 Conflict when the request violates the current state of server resources—such as an email already taken in the database or an optimistic concurrency lock version mismatch."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is the purpose of the 202 Accepted status code and how should clients poll for completion?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "202 Accepted signifies that the request was valid and queued for asynchronous execution, but processing is not yet complete. The response should provide a `Location` header pointing to a status polling endpoint (e.g., `Location: /api/v1/jobs/456`), optionally returning a `Retry-After: 10` header indicating when the client should poll next."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is Contract-First vs Code-First API development with OpenAPI?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Contract-First writes the OpenAPI specification upfront before coding, enabling frontend and backend teams to mock endpoints and write tests in parallel. Code-First writes route handlers and derives OpenAPI specs via annotations or runtime schemas (like Zod). Contract-First prevents breaking API changes, while Code-First reduces spec maintenance friction."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">How do you prevent Webhook Replay Attacks and verify authenticity using HMAC SHA-256?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The sender signs `timestamp + '.' + rawBody` using HMAC SHA-256 with a shared secret and transmits it in a header (`X-Signature: t=..., v1=...`). The receiver first checks if the timestamp is within a 5-minute tolerance window to prevent replay attacks, then recomputes the HMAC on the raw buffer and verifies using `crypto.timingSafeEqual` to avoid timing side-channel attacks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">Why must raw request body buffers be used when verifying webhook HMAC signatures in Express?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Because standard JSON parsers (`express.json()`) re-serialize objects, altering whitespace, key ordering, or Unicode characters. Any single byte discrepancy between the sender's original transmission and the re-serialized JSON alters the SHA-256 digest completely. Verification requires the exact unmodified raw byte buffer captured via `express.raw()`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">How should outbound webhook delivery systems handle rate limits, timeouts, and downstream failures?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Outbound webhooks must be dispatched through persistent background job queues (like BullMQ). Deliveries should enforce strict 3–5 second HTTP timeouts. Failed attempts must retry using truncated exponential backoff with full jitter (e.g., 5s, 1m, 15m, 1h). Exhausted deliveries move to a Dead-Letter Queue (DLQ) for alerting and manual inspection."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is the difference between 301 Moved Permanently and 308 Permanent Redirect?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Historically, user agents often rewrote POST requests to GET when encountering a 301 Moved Permanently status code. RFC 7538 introduced 308 Permanent Redirect to guarantee that the HTTP method and request payload body remain strictly unchanged across the redirect (a POST request remains a POST request)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">How do you handle API rate limiting headers using IETF standards?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "IETF standardizes three rate-limiting headers: `RateLimit-Limit` (total quota per window), `RateLimit-Remaining` (remaining requests), and `RateLimit-Reset` (seconds until window renewal). When the quota is exhausted, the server responds with status `429 Too Many Requests` accompanied by a `Retry-After: <seconds>` header."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you explain the trade-offs of HATEOAS to a technical lead who wants to adopt Level 3 REST?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "HATEOAS provides theoretical elegance by allowing backends to evolve workflows without breaking hardcoded client routes. However, modern single-page applications and mobile SDKs rely on static TypeScript types and compile-time code generation. The payload overhead of repeating link relations across millions of records and the lack of client-side tooling mean Level 2 with OpenAPI contracts provides far higher developer velocity and performance."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

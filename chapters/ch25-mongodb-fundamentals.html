@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 25: MongoDB Fundamentals | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master MongoDB fundamentals: BSON types, ObjectId anatomy, embedding vs referencing, atomic update operators ($set, $push, $addToSet), and the Aggregation Pipeline ($match, $group, $lookup).">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="25">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART V — MongoDB and Data Access</div>
+          <h1 class="chapter-title">Chapter 25: MongoDB Fundamentals</h1>
+          <p class="chapter-lead">
+            Document-oriented database architecture: BSON binary encoding, ObjectId internal anatomy, Embedding vs Referencing decision frameworks, atomic update operators ($set, $inc, $addToSet, $pull), document size limits, and the multi-stage Aggregation Pipeline ($match, $group, $lookup, $unwind).
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Document Model</span>
+              <span class="meta-pill">Aggregation Pipeline</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand the <strong>Document Model</strong> and how it resolves the Object-Relational Impedance Mismatch.</li>
+            <li>Analyze <strong>BSON (Binary JSON)</strong> encoding and deconstruct the 12-byte <strong>ObjectId</strong> structure (timestamp, machine/process random, counter).</li>
+            <li>Master MongoDB atomic update operators: <code>$set</code>, <code>$inc</code>, <code>$push</code>, <code>$addToSet</code>, and the array positional operator <code>$</code>.</li>
+            <li>Apply the <strong>Embedding vs Referencing</strong> architectural framework across 1:1, 1:Few, 1:Many, and 1:Squillions relationships.</li>
+            <li>Enforce boundary constraints against the <strong>16MB BSON Document Size Limit</strong> using the Subset and Bucket patterns.</li>
+            <li>Construct complex analytical pipelines using the <strong>Aggregation Framework</strong> (<code>$match</code>, <code>$project</code>, <code>$group</code>, <code>$unwind</code>, and <code>$lookup</code>).</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Document Model vs Relational Model</h2>
+        <p>
+          In relational databases (SQL), data is decomposed into normalized tables. In application code (JavaScript/Node.js), developers work with nested, hierarchical objects. This friction is called the <strong>Object-Relational Impedance Mismatch</strong>.
+        </p>
+        <p>
+          MongoDB is a <strong>document database</strong>. It stores data in flexible, self-describing records called documents that map directly to native JSON-like objects in code.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Relational Database (PostgreSQL)</th>
+                <th>Document Database (MongoDB)</th>
+                <th>Architectural Difference</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Database</strong></td>
+                <td><strong>Database</strong></td>
+                <td>Top-level container for data.</td>
+              </tr>
+              <tr>
+                <td><strong>Table</strong></td>
+                <td><strong>Collection</strong></td>
+                <td>A grouping of records. Collections do not enforce a fixed schema by default.</td>
+              </tr>
+              <tr>
+                <td><strong>Row</strong></td>
+                <td><strong>Document</strong></td>
+                <td>A single record represented as a BSON object with embedded sub-documents and arrays.</td>
+              </tr>
+              <tr>
+                <td><strong>Column</strong></td>
+                <td><strong>Field</strong></td>
+                <td>Key-value pair in a document. Different documents in the same collection can have different fields.</td>
+              </tr>
+              <tr>
+                <td><strong>JOIN</strong></td>
+                <td><strong>Embedded Docs / <code>$lookup</code></strong></td>
+                <td>Reads are optimized by storing related data together in a single document (co-location).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. BSON and the Anatomy of an ObjectId</h2>
+        <p>
+          MongoDB does not store plain text JSON on disk. It stores documents in <strong>BSON (Binary JSON)</strong>.
+        </p>
+
+        <h3>2.1 Why BSON Over Plain JSON?</h3>
+        <ul>
+          <li><strong>Extended Type Support:</strong> Standard JSON only supports strings, numbers, booleans, arrays, objects, and null. BSON adds first-class support for <code>Date</code>, <code>Binary Data</code>, <code>Decimal128</code> (for precise currency), <code>Int32</code>, <code>Int64</code>, and <code>ObjectId</code>.</li>
+          <li><strong>Traversal Performance:</strong> BSON elements are prefixed with length markers and byte-type tags, allowing MongoDB to skip over unneeded fields during document scanning without parsing character strings.</li>
+        </ul>
+
+        <h3>2.2 The 12-Byte ObjectId Anatomy</h3>
+        <p>
+          Every MongoDB document requires a unique <code>_id</code> field. By default, MongoDB generates a 12-byte <strong>ObjectId</strong> consisting of three distinct segments:
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 25.1: Anatomy of a 12-Byte MongoDB ObjectId</div>
+          <pre class="diagram-content">
+[ Byte 0 - 3 (4 Bytes) ]  [ Byte 4 - 8 (5 Bytes) ]  [ Byte 9 - 11 (3 Bytes) ]
++------------------------+-------------------------+-------------------------+
+| UNIX EPOCH TIMESTAMP   | RANDOM PROCESS VALUE    | INCREMENTING COUNTER    |
+| (Seconds since 1970)   | (Host machine + Process)| (Initialized randomly)  |
++------------------------+-------------------------+-------------------------+
+
+Example: 507f191e 810c19729d e12345
+- 507f191e: 4-byte timestamp -> Extracts exact creation time without a created_at column!
+- 810c19729d: 5-byte random value unique to client machine and process
+- e12345: 3-byte counter providing uniqueness for multiple IDs generated in the same second
+          </pre>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Extracting Timestamp from ObjectId)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { ObjectId } from "mongodb";
+
+const id = new ObjectId("65f42a1e810c19729de12345");
+
+// Extract creation date directly from the first 4 bytes:
+console.log(id.getTimestamp()); 
+// Output: 2024-03-15T11:05:34.000Z
+
+// Because ObjectIds start with a timestamp, documents are naturally sorted by creation time!</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Schema Design: Embedding vs Referencing</h2>
+        <p>
+          The most important architectural decision in MongoDB data modeling is deciding whether to <strong>embed</strong> child data as sub-documents/arrays inside the parent, or <strong>reference</strong> them via ObjectIds across separate collections.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Relationship Pattern</th>
+                <th>Cardinality</th>
+                <th>Recommended Model</th>
+                <th>Real-World Example</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>One-to-One</strong></td>
+                <td>1:1</td>
+                <td><strong>Embed</strong></td>
+                <td>User and their single UserSettings object.</td>
+              </tr>
+              <tr>
+                <td><strong>One-to-Few</strong></td>
+                <td>1:10</td>
+                <td><strong>Embed</strong></td>
+                <td>User and their 2–3 delivery addresses.</td>
+              </tr>
+              <tr>
+                <td><strong>One-to-Many</strong></td>
+                <td>1:1,000</td>
+                <td><strong>Reference (or Subset Pattern)</strong></td>
+                <td>E-commerce Product and 500 Customer Reviews.</td>
+              </tr>
+              <tr>
+                <td><strong>One-to-Squillions</strong></td>
+                <td>1:1,000,000+</td>
+                <td><strong>Parent Reference</strong></td>
+                <td>IoT Server Log Entries (Each log document stores a <code>serverId</code> reference).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ The 16MB BSON Document Size Limit</div>
+          <p>
+            MongoDB imposes a strict hard limit: <strong>a single BSON document cannot exceed 16 Megabytes</strong>.
+          </p>
+          <p>
+            If you embed an unbounded array of items (e.g. storing all comments, audit logs, or tracking events inside a single user document), the document will eventually hit the 16MB ceiling, causing all subsequent write operations to throw fatal errors.
+          </p>
+          <p>
+            <strong>Rule of Thumb:</strong> Never embed arrays that can grow without an absolute, guaranteed upper bound.
+          </p>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Atomic Update Operators: $set, $inc, $addToSet, and $pull</h2>
+        <p>
+          In MongoDB, write operations on a <strong>single document are always atomic</strong>. Using atomic operators allows mutating nested properties, counters, and arrays without reading the document into memory first.
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Atomic MongoDB Updates)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { MongoClient, ObjectId } from "mongodb";
+
+const client = new MongoClient(process.env.MONGODB_URI);
+const db = client.db("store");
+const users = db.collection("users");
+
+// 1. $set, $inc, and $currentDate
+await users.updateOne(
+  { _id: new ObjectId("65f42a1e810c19729de12345") },
+  {
+    $set: { "profile.bio": "Full-Stack Software Architect" },
+    $inc: { loginCount: 1, karmaPoints: 10 }, // Increment counters atomically
+    $currentDate: { lastActiveAt: true }       // Sets to current Date()
+  }
+);
+
+// 2. $addToSet: Adds item to array ONLY if it does not already exist (Set semantics)
+await users.updateOne(
+  { _id: new ObjectId("65f42a1e810c19729de12345") },
+  {
+    $addToSet: { skills: "React" } // If "React" is already in array, does nothing!
+  }
+);
+
+// 3. $pull: Removes matching elements from an array
+await users.updateOne(
+  { _id: new ObjectId("65f42a1e810c19729de12345") },
+  {
+    $pull: { tags: "outdated" } // Strips "outdated" from array
+  }
+);
+
+// 4. Positional Operator ($): Mutates matching array element
+// Find order where items.productId === 'p123' and update its quantity
+await db.collection("orders").updateOne(
+  { _id: new ObjectId("..."), "items.productId": "p123" },
+  {
+    $set: { "items.$.quantity": 5 } // '$' references the index of the matched array element!
+  }
+);</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. The MongoDB Aggregation Pipeline</h2>
+        <p>
+          While standard <code>find()</code> queries filter and project documents, the <strong>Aggregation Pipeline</strong> is a data transformation framework modeled on Unix pipes:
+        </p>
+        <p>
+          \[
+          \text{Collection} \xrightarrow{\text{\$match}} \text{Stage 1} \xrightarrow{\text{\$group}} \text{Stage 2} \xrightarrow{\text{\$sort}} \text{Final Output}
+          \]
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 25.2: Multi-Stage Aggregation Pipeline Flow</div>
+          <pre class="diagram-content">
+[ Raw Orders Collection: 100,000 Documents ]
+                     |
+                     v
+             [ $match Stage ] (Filters orders where status = 'COMPLETED')
+                     | (50,000 Docs)
+                     v
+             [ $unwind Stage ] (Flattens nested 'items' array: 1 doc per item)
+                     | (150,000 Items)
+                     v
+             [ $group Stage ] (Groups by category, computes SUM(revenue))
+                     | (12 Categories)
+                     v
+             [ $sort Stage ] (Sorts by totalRevenue DESC)
+                     |
+                     v
+[ Final Aggregated Report: 12 Records ]
+          </pre>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Aggregation Pipeline Walkthrough)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">export async function getTopRevenueCategories() {
+  const pipeline = [
+    // Stage 1: Filter documents early to leverage B-Tree indexes!
+    {
+      $match: {
+        status: "COMPLETED",
+        createdAt: { $gte: new Date("2024-01-01") }
+      }
+    },
+
+    // Stage 2: Deconstruct items array into individual documents
+    {
+      $unwind: "$items"
+    },
+
+    // Stage 3: Group by item category and compute totals
+    {
+      $group: {
+        _id: "$items.category", // Grouping key
+        totalRevenue: {
+          $sum: { $multiply: ["$items.price", "$items.quantity"] }
+        },
+        itemCount: { $sum: "$items.quantity" },
+        uniqueBuyers: { $addToSet: "$customerId" } // Collect unique customer IDs
+      }
+    },
+
+    // Stage 4: Project and format output fields
+    {
+      $project: {
+        _id: 0,
+        category: "$_id",
+        totalRevenue: { $round: ["$totalRevenue", 2] },
+        itemCount: 1,
+        buyerCount: { $size: "$uniqueBuyers" } // Calculate length of unique set
+      }
+    },
+
+    // Stage 5: Sort by revenue descending
+    {
+      $sort: { totalRevenue: -1 }
+    },
+
+    // Stage 6: Limit top 5 categories
+    {
+      $limit: 5
+    }
+  ];
+
+  return await db.collection("orders").aggregate(pipeline).toArray();
+}</code></pre>
+        </div>
+
+        <h3>5.1 The $lookup Stage: Simulating Relational Joins</h3>
+        <p>
+          The <code>$lookup</code> stage performs a left outer join to an unsharded collection in the same database:
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// Join orders with customer profiles
+const pipeline = [
+  { $match: { _id: new ObjectId("65f42a1e810c19729de12345") } },
+  {
+    $lookup: {
+      from: "customers",        // Foreign collection
+      localField: "customerId", // Field in orders
+      foreignField: "_id",      // Field in customers
+      as: "customerDetails"     // Output array field
+    }
+  },
+  // Flatten single-item array into an object
+  {
+    $unwind: "$customerDetails"
+  }
+];</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-tag">Exercise 25.1</span>
+            <span class="exercise-title">Design a Blog System Using the Subset Pattern to Prevent Document Bloat</span>
+          </div>
+          <p>
+            <strong>Problem:</strong> A popular tech blog article can receive 50,000 comments. Storing all comments inside the article document violates the 16MB limit. Storing all comments in a separate collection requires an extra query on every pageview. Implement the <strong>Subset Pattern</strong> to optimize article page loads.
+          </p>
+          <details class="solution-details">
+            <summary class="solution-toggle">View Complete Solution</summary>
+            <div class="solution-body">
+              <div class="code-block" data-lang="javascript">
+                <div class="code-header">
+                  <span class="code-lang">javascript</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-javascript">/*
+SOLUTION: THE SUBSET PATTERN
+Store the most recent 10 comments directly EMBEDDED inside the Post document 
+for instant 1-query rendering of the main page.
+Store ALL comments in a dedicated 'comments' collection with an articleId reference!
+*/
+
+// 1. Post Document Structure (Contains embedded subset)
+const postDocument = {
+  _id: new ObjectId("..."),
+  title: "Building Real-Time Systems with Node.js",
+  content: "Full article body...",
+  commentCount: 4520, // Precomputed counter
+  recentComments: [
+    { id: new ObjectId("..."), author: "Alice", text: "Great post!", createdAt: new Date() },
+    { id: new ObjectId("..."), author: "Bob", text: "Very helpful.", createdAt: new Date() }
+    // Exactly capped at 10 items! Document size stays tiny (&lt; 100KB)!
+  ]
+};
+
+// 2. Adding a New Comment (Atomic Dual Operation):
+export async function addCommentToArticle(articleId, commentData) {
+  const commentId = new ObjectId();
+  const newComment = { _id: commentId, articleId, ...commentData, createdAt: new Date() };
+
+  // Insert full record into unbounded collection
+  await db.collection("comments").insertOne(newComment);
+
+  // Update Post: Increment counter, push new comment to top of subset, slice to keep top 10!
+  await db.collection("posts").updateOne(
+    { _id: articleId },
+    {
+      $inc: { commentCount: 1 },
+      $push: {
+        recentComments: {
+          $each: [newComment],
+          $sort: { createdAt: -1 },
+          $slice: 10 // Automatically caps array at 10 most recent items!
+        }
+      }
+    }
+  );
+}</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 7: Interview Questions -->
+        <section class="qa-section" id="interview-questions">
+          <h2>7. Chapter-Specific Interview Questions and Answers</h2>
+          <p>
+            Master these 20 high-frequency MongoDB interview questions covering BSON architecture, schema design, update operators, and aggregation stages.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is BSON, and how does it differ from standard JSON?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "BSON stands for Binary JSON. It is a binary-encoded serialization format used by MongoDB to store documents. Unlike standard JSON, BSON includes data length headers and type markers for fast document traversal, and adds rich data types that standard JSON lacks—such as native Date objects, 64-bit integers, Decimal128 for precise currency arithmetic, raw binary data, and 12-byte ObjectIds."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">Explain the internal anatomy of a 12-byte MongoDB ObjectId.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An ObjectId consists of 12 bytes: 1. The first 4 bytes represent a 32-bit UNIX epoch timestamp (seconds since 1970), providing natural chronological sorting. 2. The next 5 bytes represent a random value unique to the machine and process, ensuring uniqueness across distributed servers. 3. The final 3 bytes are an incrementing counter initialized to a random value, guaranteeing uniqueness for multiple IDs generated in the same second on the same machine."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is the 16MB document size limit in MongoDB, and why does it exist?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "MongoDB limits individual BSON documents to 16 Megabytes. This limit exists to prevent unbounded memory consumption: during queries and updates, MongoDB pulls whole documents into RAM WiredTiger cache. Large multi-megabyte documents would saturate RAM, cause severe I/O thrashing, and degrade network transfer bandwidth. For storing files larger than 16MB, MongoDB provides GridFS, which chunks files into 255KB documents."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">When should you EMBED vs REFERENCE data in MongoDB schema design?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Embed when data is accessed together, has bounded 1:1 or 1:Few cardinality (e.g. user and 3 addresses), and child data does not have an independent lifecycle. Embedding provides fast single-query reads and atomic updates. Reference (using separate collections) when child data is accessed independently, has high cardinality (1:Many or 1:Squillions like logs or comments) that risks exceeding the 16MB document limit, or is frequently updated by concurrent threads."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is the difference between $push and $addToSet update operators?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`$push` appends an item to an array unconditionally, allowing duplicate entries. `$addToSet` treats the array like a mathematical Set: it only appends the item if the item does not already exist in the array, preventing duplicate elements without requiring client-side deduplication."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">Are write operations atomic in MongoDB?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Yes. Write operations in MongoDB are always atomic at the single-document level. If an update modifies 10 different nested fields or array elements within a single document, either all modifications succeed or none do. For multi-document transactions across collections, MongoDB supports full ACID multi-document transactions using replica sets."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is the Subset Pattern, and what architectural problem does it solve?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Subset Pattern addresses the problem where an entity has hundreds or thousands of related items (e.g. an article with 5,000 comments or a movie with 50 actors), but the application UI only displays the top 10 on the main view. We embed the most frequently needed subset (top 10 recent items) inside the main document for instant single-query rendering, while storing the complete unbounded list in a separate collection. This preserves fast reads while avoiding document bloat."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What does the $unwind stage do in an Aggregation Pipeline?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`$unwind` deconstructs an array field from the input documents to output a document for each element in the array. If a document has an `items` array with 3 objects, `$unwind: '$items'` produces 3 separate documents, each containing a single item object. This is essential prior to `$group` stages when computing metrics over individual array items (such as total sales by category)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">How does the $lookup stage work in MongoDB, and what are its performance implications?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`$lookup` performs a Left Outer Join between collections in the same database, attaching matching documents from a foreign collection as an array field. Because MongoDB collections lack relational join engines, `$lookup` performs index scans on the foreign collection. To prevent severe latency, the `foreignField` in the target collection MUST have an index. Furthermore, `$lookup` cannot be executed across sharded collections in older MongoDB versions."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is the positional operator ($) in MongoDB updates?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The positional operator `$` identifies an element in an array to update without explicitly specifying the array index position. It refers to the first element in the array that matched the query condition: `db.orders.updateOne({ _id: id, 'items.productId': 'p1' }, { $set: { 'items.$.quantity': 5 } })`. It updates the quantity of the specific item matching `p1`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the difference between updateOne, updateMany, and replaceOne?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`updateOne()` updates the first document matching the query filter. `updateMany()` updates all documents matching the query filter. `replaceOne()` completely overwrites the entire matching document with a brand-new document (retaining only the original `_id`), deleting all other fields not included in the replacement."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">Why should $match always be placed as early as possible in an Aggregation Pipeline?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Placing `$match` at the beginning of the pipeline allows MongoDB to use B-Tree indexes on the collection to filter rows rapidly and limits the number of documents passed down subsequent stages. If placed after an `$unwind` or `$project` stage, MongoDB cannot use indexes on the collection and is forced to process all documents in memory, causing severe performance degradation."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: You have an e-commerce cart document. Two requests arrive simultaneously to add an item. How do you prevent race conditions without transactions?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Use atomic array update operators directly in MongoDB: `db.carts.updateOne({ _id: cartId, 'items.productId': productId }, { $inc: { 'items.$.quantity': 1 } })`. If the item does not exist, use `$push`. Because single-document updates are serialized atomically in MongoDB's WiredTiger storage engine, neither request overwrites the other, guaranteeing accurate increments without race conditions."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the Bucket Pattern in MongoDB, and when is it used?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Bucket Pattern groups time-series or IoT data into discrete time buckets (e.g. 1 document per hour containing an array of measurements up to 100 samples) rather than storing 1 document per sensor reading. This reduces document overhead, shrinks B-Tree index size, improves compression in WiredTiger, and allows easy pre-aggregation (sum, min, max per hour) inside the bucket document."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What does upsert: true do in an update operation?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`upsert: true` performs an atomic insert-or-update. If a document matches the query criteria, it updates that document normally. If no document matches, MongoDB automatically creates and inserts a brand-new document merging the query filter fields and the update operator payloads."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What is the 100MB RAM limit in Aggregation Pipeline stages, and how is it resolved?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Pipeline stages like `$sort` and `$group` have a maximum RAM limit of 100MB. If intermediate data exceeds 100MB, MongoDB aborts the query with an error. To resolve this: 1. Index the sort fields so sorting is done via B-Tree rather than memory, or 2. Pass `{ allowDiskUse: true }` to the aggregate options, which permits MongoDB to write temporary spillover data to disk."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is the difference between $set and $unset?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`$set` replaces the value of a field with the specified value (or creates the field if it does not exist). `$unset` completely deletes the specified field from the document: `{ $unset: { legacyToken: '' } }`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">How do you extract the creation date from a MongoDB document that has no created_at field?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "If the document uses a standard `_id` ObjectId, you can call `doc._id.getTimestamp()`. The first 4 bytes of an ObjectId represent the UNIX epoch timestamp in seconds at the time the ID was instantiated, giving you the document creation time without storing an extra date field."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">Scenario: How would you model an audit log system in MongoDB that automatically purges entries older than 90 days?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I would store each log in an `audit_logs` collection with a `createdAt: new Date()` field and create a **TTL (Time-To-Live) Index**: `db.audit_logs.createIndex({ createdAt: 1 }, { expireAfterSeconds: 7776000 })` (90 days in seconds). MongoDB's background TTL thread runs every 60 seconds and automatically deletes documents where `createdAt + expireAfterSeconds < now`, eliminating the need for custom cleanup cron jobs."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">What is the difference between $push with $slice vs unbounded $push?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An unbounded `$push` adds elements indefinitely, which will eventually exceed the 16MB document limit. Using `$push` with the `$slice` modifier caps the array at a fixed maximum size (e.g. `{ $push: { logs: { $each: [newEntry], $slice: -100 } } }`). It appends the new element and automatically discards older elements to keep only the 100 most recent items, maintaining bounded document sizes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

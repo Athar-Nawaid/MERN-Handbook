@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 15: React Fundamentals | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master React fundamentals: Declarative UI, JSX transpilation, Props vs State, Reconciliation, the Fiber architecture, Lists & Keys, Controlled Inputs, and Rules of Hooks.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="15">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART III — React and Redux Toolkit</div>
+          <h1 class="chapter-title">Chapter 15: React Fundamentals</h1>
+          <p class="chapter-lead">
+            Deconstructing React from the inside out: Declarative UI paradigms, JSX transpilation mechanics, Component Composition, the Virtual DOM Diffing Algorithm, React Fiber architecture, Keys and Reconciliation, Controlled vs Uncontrolled forms, and the Rules of Hooks.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Fiber Engine</span>
+              <span class="meta-pill">Reconciliation</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Contrast <strong>Declarative UI</strong> modeling against imperative Vanilla DOM mutations.</li>
+            <li>Understand JSX transpilation under Babel: <code>React.createElement</code> vs the modern <code>react/jsx-runtime</code>.</li>
+            <li>Distinguish <strong>Props</strong> (external immutable configuration) from <strong>State</strong> (internal snapshot over time).</li>
+            <li>Master the <strong>Reconciliation Diffing Algorithm</strong>: \(\mathcal{O}(n)\) heuristics, element type matching, and stable keys.</li>
+            <li>Deconstruct the <strong>React Fiber Architecture</strong>: Render Phase (cooperative, interruptible) vs Commit Phase (synchronous DOM mutations).</li>
+            <li>Implement form inputs correctly: Controlled components with validation vs Uncontrolled components via <code>useRef</code>.</li>
+            <li>Understand why <strong>Rules of Hooks</strong> exist and how Fiber tracks hook state as a linear linked list.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Declarative vs Imperative UI Programming</h2>
+        <p>
+          In vanilla JavaScript or jQuery, UI development is <strong>imperative</strong>: you give step-by-step instructions telling the browser <em>how</em> to alter DOM nodes in response to user actions:
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Imperative)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// Imperative approach: You manually manage DOM state, mutations, and transitions
+const btn = document.getElementById("toggle-btn");
+const text = document.getElementById("status-text");
+
+let isOnline = false;
+
+btn.addEventListener("click", () => {
+  isOnline = !isOnline;
+  if (isOnline) {
+    text.textContent = "User is Online";
+    text.classList.remove("text-red");
+    text.classList.add("text-green");
+    btn.textContent = "Set Offline";
+  } else {
+    text.textContent = "User is Offline";
+    text.classList.remove("text-green");
+    text.classList.add("text-red");
+    btn.textContent = "Set Online";
+  }
+});</code></pre>
+        </div>
+
+        <p>
+          As applications grow, imperative DOM manipulation creates severe synchronization bugs. If two different asynchronous event listeners update the DOM independently, the UI quickly drifts out of sync with application data.
+        </p>
+
+        <p>
+          React adopts a <strong>declarative</strong> model. You describe <em>what</em> the UI should look like for any given state. React acts as a projection engine:
+        </p>
+        <p>
+          \[
+          \text{UI} = f(\text{state}, \text{props})
+          \]
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Declarative React)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// Declarative approach: UI is an idempotent pure function of state
+import { useState } from "react";
+
+export function UserStatus() {
+  const [isOnline, setIsOnline] = useState(false);
+
+  return (
+    &lt;div&gt;
+      &lt;span className={isOnline ? "text-green" : "text-red"}&gt;
+        User is {isOnline ? "Online" : "Offline"}
+      &lt;/span&gt;
+      &lt;button onClick={() => setIsOnline(!isOnline)}&gt;
+        Set {isOnline ? "Offline" : "Online"}
+      &lt;/button&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. What is JSX Under the Hood?</h2>
+        <p>
+          JSX (JavaScript XML) is a syntax extension for JavaScript. Browsers do not understand JSX. A build tool (Babel, SWC, or Vite/esbuild) compiles JSX into standard JavaScript function calls before it reaches the browser.
+        </p>
+
+        <h3>2.1 Classic JSX vs Modern JSX Transform (React 17+)</h3>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Aspect</th>
+                <th>Classic Transform (React 16 & earlier)</th>
+                <th>Modern Transform (React 17+)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Transpiled Output</strong></td>
+                <td><code>React.createElement(type, props, ...children)</code></td>
+                <td><code>import { jsx as _jsx } from 'react/jsx-runtime'</code></td>
+              </tr>
+              <tr>
+                <td><strong>Import Requirement</strong></td>
+                <td>Requires <code>import React from 'react'</code> in every file containing JSX.</td>
+                <td>Compiler automatically imports runtime helper; no React import needed for JSX alone.</td>
+              </tr>
+              <tr>
+                <td><strong>Performance</strong></td>
+                <td>Creates extra function arguments and object allocations.</td>
+                <td>Optimized flat object initialization directly in the compiler.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// SOURCE CODE (What you write):
+const element = (
+  &lt;div id="container" className="active"&gt;
+    &lt;h1&gt;Hello World&lt;/h1&gt;
+    &lt;p&gt;Full-Stack Engineering&lt;/p&gt;
+  &lt;/div&gt;
+);
+
+// TRANSPILATION OUTPUT (What the browser runs):
+// Under React 17+ Modern JSX Transform:
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+
+const element = _jsxs("div", {
+  id: "container",
+  className: "active",
+  children: [
+    _jsx("h1", { children: "Hello World" }),
+    _jsx("p", { children: "Full-Stack Engineering" })
+  ]
+});
+
+// The resulting element is a plain, immutable JavaScript object (Virtual DOM node):
+console.log(element);
+/*
+{
+  $$typeof: Symbol(react.element), // Security token preventing XSS injection via JSON!
+  type: "div",
+  key: null,
+  ref: null,
+  props: {
+    id: "container",
+    className: "active",
+    children: [ ... ]
+  }
+}
+*/</code></pre>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">🔒 Why <code>$$typeof: Symbol(react.element)</code> Matters for Security</div>
+          <p>
+            If a server accepts arbitrary user-supplied JSON from an attacker (e.g., in a message payload) and an application attempts to render it as an element, an attacker could forge a fake React element with <code>dangerouslySetInnerHTML</code> to execute an XSS attack.
+          </p>
+          <p>
+            Because JSON does not support JavaScript <code>Symbol</code> primitives, client-side parsed JSON will contain strings, numbers, or objects, but <strong>never</strong> a genuine <code>Symbol(react.element)</code>. React checks this symbol before rendering: if <code>$$typeof</code> is missing or invalid, React refuses to render the object.
+          </p>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Components, Props, and State</h2>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Characteristic</th>
+                <th>Props (Properties)</th>
+                <th>State</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Source & Ownership</strong></td>
+                <td>Passed from parent component down to child. Owned by parent.</td>
+                <td>Created and managed internally within the component. Owned locally.</td>
+              </tr>
+              <tr>
+                <td><strong>Mutability</strong></td>
+                <td><strong>Read-Only</strong> (Immutable). A component must never modify its own props!</td>
+                <td><strong>Snapshot</strong> updated only via setter functions (e.g. <code>setState</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Trigger Re-render?</strong></td>
+                <td>Yes, when parent passes updated props values.</td>
+                <td>Yes, when setter is called with a new reference.</td>
+              </tr>
+              <tr>
+                <td><strong>Analogy</strong></td>
+                <td>Function arguments passed into a function.</td>
+                <td>Local variables maintained across invocations.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>3.1 Unidirectional Data Flow (One-Way Data Binding)</h3>
+        <p>
+          In React, data flows in a single direction: from top to bottom (Parent \(\to\) Child) via props. When child components need to modify parent state, they do not mutate state directly; they invoke <strong>callback functions</strong> passed down as props.
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 15.1: Unidirectional Data Flow & Lifting State Up</div>
+          <pre class="diagram-content">
+                    [ Parent Component (Holds State: count) ]
+                       |                                ^
+             Props:    |                                |  Callback:
+             count=5   |                                |  onIncrement()
+                       v                                |
+             [ Child Component A ]            [ Child Component B ]
+             (Displays Count)                 (Button: "Increment")
+          </pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Rendering Lists and the Importance of Keys</h2>
+        <p>
+          When rendering dynamic arrays of elements in JSX, React requires each element to have a unique <code>key</code> prop.
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// CORRECT: Stable, unique database ID as key
+function TodoList({ todos }) {
+  return (
+    &lt;ul&gt;
+      {todos.map((todo) => (
+        &lt;TodoItem key={todo.id} todo={todo} /&gt;
+      ))}
+    &lt;/ul&gt;
+  );
+}
+
+// DANGEROUS ANTI-PATTERN: Array index as key
+function BuggyList({ todos }) {
+  return (
+    &lt;ul&gt;
+      {todos.map((todo, index) => (
+        &lt;TodoItem key={index} todo={todo} /&gt; // DO NOT DO THIS!
+      ))}
+    &lt;/ul&gt;
+  );
+}</code></pre>
+        </div>
+
+        <h3>4.1 Why Using Array Indexes as Keys Breaks Your Application</h3>
+        <p>
+          Keys are React's identity badges during reconciliation. If you use array indices (0, 1, 2) as keys and you:
+        </p>
+        <ol>
+          <li><strong>Prepend an item to the beginning of the list:</strong> The new item takes index <code>0</code>. The previous first item becomes index <code>1</code>. React compares key <code>0</code> to key <code>0</code> and assumes the first item simply changed props rather than being a new item. Internal component state (such as input focus, form values, and CSS animation states) will remain tied to the wrong items!</li>
+          <li><strong>Sort or filter the list:</strong> Elements with uncontrolled inputs or active timers will shuffle improperly because React reuses the existing DOM nodes at index <code>0</code>, <code>1</code>, etc.</li>
+        </ol>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">💡 The Only Time Array Index as Key is Acceptable</div>
+          <p>
+            Using an array index as a key is acceptable <strong>only</strong> if all three conditions are satisfied:
+          </p>
+          <ol>
+            <li>The list is completely static (items are never reordered, filtered, inserted, or deleted).</li>
+            <li>Items in the list do not have their own internal state (uncontrolled inputs, local state).</li>
+            <li>No stable unique identifier (like a database ID or UUID) is available.</li>
+          </ol>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. The Virtual DOM and Reconciliation Diffing Algorithm</h2>
+        <p>
+          Direct DOM manipulation is computationally expensive because modifying the real DOM triggers browser recalculations: <strong>CSS Style Recalculation</strong>, <strong>Layout (Reflow)</strong>, <strong>Repaint</strong>, and <strong>Compositing</strong>.
+        </p>
+        <p>
+          The <strong>Virtual DOM</strong> is a lightweight in-memory representation of the real DOM tree consisting of plain JavaScript objects. When state changes occur:
+        </p>
+        <ol>
+          <li>React renders a new Virtual DOM tree representing the updated UI.</li>
+          <li>React executes the <strong>Reconciliation algorithm</strong> to compare the new Virtual DOM tree against the previous Virtual DOM tree (diffing).</li>
+          <li>React computes the minimal set of real DOM operations and applies them in a single batch to the browser DOM.</li>
+        </ol>
+
+        <h3>5.1 The \(\mathcal{O}(n)\) Heuristic Diffing Rules</h3>
+        <p>
+          Finding the minimum number of operations to transform one arbitrary tree into another has a theoretical computational complexity of \(\mathcal{O}(n^3)\). For a tree with 1,000 nodes, \(\mathcal{O}(n^3)\) would require 1,000,000,000 comparisons—crashing the browser.
+        </p>
+        <p>
+          React reduces this complexity to \(\mathcal{O}(n)\) using two heuristic assumptions:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Heuristic Assumption</th>
+                <th>Diffing Behavior</th>
+                <th>DOM Mutation Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>1. Elements of Different Types</strong></td>
+                <td>If root element types differ (e.g. <code>&lt;div&gt;</code> \(\to\) <code>&lt;section&gt;</code>, or <code>&lt;Header&gt;</code> \(\to\) <code>&lt;Footer&gt;</code>), React unmounts the old tree entirely and builds the new tree from scratch.</td>
+                <td>Destroys old DOM node, clears all child state, and creates brand-new DOM nodes.</td>
+              </tr>
+              <tr>
+                <td><strong>2. Elements of Same Type</strong></td>
+                <td>If types are identical (e.g. <code>&lt;div className="old"&gt;</code> \(\to\) <code>&lt;div className="new"&gt;</code>), React retains the existing underlying DOM node and only mutates the modified attributes.</td>
+                <td>Minimal attribute update: <code>domNode.className = "new"</code>. Preserves DOM node and state.</td>
+              </tr>
+              <tr>
+                <td><strong>3. Keys on Child Lists</strong></td>
+                <td>React uses keys to match children in the original tree with children in the subsequent tree, allowing efficient inserts, deletions, and moves.</td>
+                <td>Reorders existing DOM nodes rather than destroying and recreating them.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. React Fiber Architecture: Under the Hood</h2>
+        <p>
+          In React 15 (the legacy "Stack Reconciler"), diffing was synchronous and recursive. If a component tree was deep and complex, the reconciliation process blocked the browser's main thread for 100ms or more. User inputs stuttered, animations dropped frames, and the page froze (jank).
+        </p>
+        <p>
+          <strong>React Fiber</strong> (introduced in React 16 and powering React 18/19) is a complete rewrite of React's core reconciliation engine. It turns the synchronous call stack into a virtualized, cooperative call stack using <strong>linked-list node data structures</strong>.
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 15.2: React Fiber Architecture — Two-Phase Pipeline</div>
+          <pre class="diagram-content">
+[ TRIGGER: setState() / User Event ]
+                  |
+==========================================================================
+PHASE 1: RENDER / RECONCILIATION PHASE (Pure, Asynchronous, Interruptible)
+==========================================================================
+- Traverses Fiber Linked List (child, sibling, return pointers).
+- Computes component changes and tags side-effects (Placement, Update, Deletion).
+- Can be paused, aborted, or restarted based on task priority (Concurrency).
+- Does NOT perform any DOM mutations!
+                  |
+        [ Work-In-Progress Tree Ready ]
+                  |
+==========================================================================
+PHASE 2: COMMIT PHASE (Synchronous, Uninterruptible)
+==========================================================================
+- React swaps: currentTree &lt;===> workInProgressTree (Double Buffering).
+- Applies all DOM mutations synchronously (createElement, appendChild, remove).
+- Runs useLayoutEffect and useEffect lifecycles.
+- Browser repaints pixels to screen.
+          </pre>
+        </div>
+
+        <h3>6.1 Anatomy of a Fiber Node</h3>
+        <p>
+          A Fiber is a plain JavaScript object representing a unit of work. Key fields include:
+        </p>
+        <ul>
+          <li><code>type</code> and <code>key</code>: Component function or HTML tag (e.g. <code>'div'</code>) and key identifier.</li>
+          <li><code>child</code>: Pointer to its first child Fiber node.</li>
+          <li><code>sibling</code>: Pointer to its next sibling Fiber node.</li>
+          <li><code>return</code>: Pointer to its parent Fiber node (where work returns upon completion).</li>
+          <li><code>memoizedState</code>: Singly linked list storing the component's Hook states (<code>useState</code>, <code>useEffect</code>).</li>
+          <li><code>flags</code> (Effect tags): Bitmask flags (<code>Placement</code>, <code>Update</code>, <code>Deletion</code>) specifying required DOM work.</li>
+          <li><code>alternate</code>: Pointer to the corresponding node in the other tree (enables <strong>Double Buffering</strong> between <code>current</code> and <code>workInProgress</code> trees).</li>
+        </ul>
+
+        <!-- Section 7 -->
+        <h2>7. Controlled vs Uncontrolled Components</h2>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Controlled Component</th>
+                <th>Uncontrolled Component</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Source of Truth</strong></td>
+                <td>React component state (<code>useState</code>).</td>
+                <td>The browser DOM itself.</td>
+              </tr>
+              <tr>
+                <td><strong>Accessing Value</strong></td>
+                <td>Value bound to <code>value</code> prop, updated via <code>onChange</code> handler.</td>
+                <td>Value queried on-demand using a <code>useRef()</code> reference to the DOM node.</td>
+              </tr>
+              <tr>
+                <td><strong>Real-time Validation</strong></td>
+                <td>Instantaneous: validation runs on every keystroke.</td>
+                <td>Deferred: validation checked only on form submit.</td>
+              </tr>
+              <tr>
+                <td><strong>Performance Overhead</strong></td>
+                <td>Re-renders component on every single keystroke.</td>
+                <td>Zero re-renders while typing; mutations stay inside native DOM.</td>
+              </tr>
+              <tr>
+                <td><strong>Special Cases</strong></td>
+                <td>Standard inputs, textareas, selects.</td>
+                <td><strong>File inputs (<code>&lt;input type="file" /&gt;</code>)</strong>: Always uncontrolled because file paths are read-only in browsers for security!</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { useState, useRef } from "react";
+
+// Controlled Form Pattern: Strict validation, synchronous state
+export function ControlledForm() {
+  const [email, setEmail] = useState("");
+  const [error, setError] = useState(null);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setEmail(val);
+    if (val && !val.includes("@")) {
+      setError("Must be a valid email address.");
+    } else {
+      setError(null);
+    }
+  };
+
+  return (
+    &lt;form onSubmit={(e) => { e.preventDefault(); console.log("Submitting:", email); }}&gt;
+      &lt;input type="email" value={email} onChange={handleChange} /&gt;
+      {error && &lt;p className="error"&gt;{error}&lt;/p&gt;}
+      &lt;button type="submit" disabled={Boolean(error || !email)}&gt;Submit&lt;/button&gt;
+    &lt;/form&gt;
+  );
+}
+
+// Uncontrolled Form Pattern: High performance, direct DOM queries
+export function UncontrolledForm() {
+  const inputRef = useRef(null);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    console.log("Submitting input value:", inputRef.current.value);
+  };
+
+  return (
+    &lt;form onSubmit={handleSubmit}&gt;
+      &lt;input type="text" defaultValue="Default text" ref={inputRef} /&gt;
+      &lt;button type="submit"&gt;Submit&lt;/button&gt;
+    &lt;/form&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 8 -->
+        <h2>8. The Rules of Hooks: Why Order and Call Location Matter</h2>
+        <p>
+          React Hooks (introduced in React 16.8) come with two non-negotiable rules enforced by the ESLint plugin <code>eslint-plugin-react-hooks</code>:
+        </p>
+        <ol>
+          <li><strong>Only Call Hooks at the Top Level:</strong> Do not call hooks inside loops, conditions, nested functions, or try/catch blocks.</li>
+          <li><strong>Only Call Hooks from React Functions:</strong> Call hooks only from React function components or custom hooks (functions starting with <code>use</code>).</li>
+        </ol>
+
+        <h3>8.1 Why Does This Rule Exist? (Fiber Linked List Mechanics)</h3>
+        <p>
+          How does React know which state belongs to which <code>useState</code> call when you don't pass an identifier string?
+        </p>
+        <p>
+          React maintains an internal <strong>singly linked list</strong> of hook objects on the Fiber node's <code>memoizedState</code> property. On every render, React starts at the head of the linked list and advances a pointer (<code>workInProgressHook = workInProgressHook.next</code>) sequentially.
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 15.3: How Fiber Manages Hooks via Linked List</div>
+          <pre class="diagram-content">
+[ First Render Execution Order ]
+1. const [name, setName] = useState("Alice");    --> Node 1: { value: "Alice", next: -> }
+2. const [age, setAge] = useState(25);           --> Node 2: { value: 25, next: -> }
+3. useEffect(fn, []);                            --> Node 3: { effect: fn, next: null }
+
+Fiber.memoizedState points to: [ Node 1 ] -> [ Node 2 ] -> [ Node 3 ]
+
+========================================================================
+
+[ BUG: Hook inside an `if` condition skips an execution! ]
+if (condition) {
+  const [name, setName] = useState("Alice"); // SKIPPED when condition is false!
+}
+const [age, setAge] = useState(25); // React pairs this with Node 1 ("Alice")! State corrupts!
+          </pre>
+        </div>
+
+        <!-- Section 9 -->
+        <h2>9. SyntheticEvent System</h2>
+        <p>
+          React does not attach event listeners directly to target DOM nodes when you write <code>&lt;button onClick={handleClick}&gt;</code>. Instead, it uses a cross-browser wrapper called <strong>SyntheticEvent</strong>.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Behavior</th>
+                <th>React 16 and Earlier</th>
+                <th>React 17+ and React 18/19</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Delegation Root</strong></td>
+                <td>Attached to <code>document</code> level.</td>
+                <td>Attached to the <strong>Root DOM Container</strong> (<code>#root</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Multi-React Apps</strong></td>
+                <td>Conflicted when embedding React inside older portals or micro-frontends.</td>
+                <td>Completely isolated; nested React apps can stop propagation cleanly.</td>
+              </tr>
+              <tr>
+                <td><strong>Event Pooling</strong></td>
+                <td>Events were recycled for memory efficiency; accessing <code>e.target</code> inside asynchronous code threw errors unless <code>e.persist()</code> was called.</td>
+                <td><strong>Event Pooling Removed!</strong> SyntheticEvents are normal objects and can be accessed safely inside async timers and promises without <code>e.persist()</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 10 -->
+        <h2>10. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-tag">Exercise 15.1</span>
+            <span class="exercise-title">Build a Searchable Tag Filter with Stable Keys and Proper State Lifting</span>
+          </div>
+          <p>
+            <strong>Problem:</strong> Create an interactive tag selector component where users can filter a list of technology tags, select/deselect tags, and clear selections. Ensure stable keys are used, inputs are controlled, and state is properly lifted.
+          </p>
+          <details class="solution-details">
+            <summary class="solution-toggle">View Complete Solution</summary>
+            <div class="solution-body">
+              <div class="code-block" data-lang="javascript">
+                <div class="code-header">
+                  <span class="code-lang">javascript</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-javascript">import { useState } from "react";
+
+const INITIAL_TAGS = [
+  { id: "tag-1", label: "React" },
+  { id: "tag-2", label: "Node.js" },
+  { id: "tag-3", label: "TypeScript" },
+  { id: "tag-4", label: "PostgreSQL" },
+  { id: "tag-5", label: "Docker" }
+];
+
+export function TagFilterApp() {
+  const [selectedTagIds, setSelectedTagIds] = useState(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const toggleTag = (id) => {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const clearAll = () => setSelectedTagIds(new Set());
+
+  const filteredTags = INITIAL_TAGS.filter((tag) =>
+    tag.label.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    &lt;div className="tag-container"&gt;
+      &lt;input
+        type="text"
+        placeholder="Search tags..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+      /&gt;
+
+      &lt;div className="tag-pills"&gt;
+        {filteredTags.map((tag) => {
+          const isSelected = selectedTagIds.has(tag.id);
+          return (
+            &lt;button
+              key={tag.id} // Stable ID key prevents reconciliation errors
+              type="button"
+              className={`pill ${isSelected ? "pill-active" : ""}`}
+              onClick={() => toggleTag(tag.id)}
+            &gt;
+              {tag.label} {isSelected ? "✓" : "+"}
+            &lt;/button&gt;
+          );
+        })}
+      &lt;/div&gt;
+
+      {selectedTagIds.size > 0 && (
+        &lt;button type="button" onClick={clearAll} className="btn-clear"&gt;
+          Clear {selectedTagIds.size} Selected
+        &lt;/button&gt;
+      )}
+    &lt;/div&gt;
+  );
+}</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 11: Interview Questions -->
+        <section class="qa-section" id="interview-questions">
+          <h2>11. Chapter-Specific Interview Questions and Answers</h2>
+          <p>
+            Master these 20 high-frequency interview questions covering core React mechanics, Virtual DOM diffing, and the Fiber engine.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the difference between Declarative and Imperative programming in UI development?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Imperative programming focuses on HOW to achieve a result by providing explicit step-by-step instructions for DOM manipulation, such as `document.getElementById` and `classList.add`. Declarative programming focuses on WHAT the UI should look like for a given state. In React, you describe the UI as a function of state: `UI = f(state)`. When state changes, React handles the underlying DOM mutations automatically, eliminating manual synchronization bugs."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is JSX, and can browsers execute it natively?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "JSX stands for JavaScript XML. It is a syntax extension allowing developers to write HTML-like markup inside JavaScript files. Browsers cannot execute JSX directly. It must be transpiled by a compiler like Babel or SWC into standard JavaScript function calls—historically `React.createElement()` and in React 17+ the `_jsx()` runtime function—which produce plain JavaScript objects representing Virtual DOM nodes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is the Virtual DOM, and why does React use it instead of directly updating the real DOM?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Virtual DOM is a lightweight, in-memory tree of JavaScript objects representing the real DOM. Direct real DOM mutations are computationally expensive because they trigger browser reflows and repaints. When state updates, React creates a new Virtual DOM tree, diffs it against the previous one using the Reconciliation algorithm, and batches the minimal set of real DOM operations to update only the changed elements, optimizing browser rendering performance."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">How does React's Reconciliation Diffing Algorithm achieve O(n) computational complexity?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Finding the minimum number of edits between two arbitrary trees has an O(n^3) complexity. React relies on two heuristics to reduce this to O(n): First, two elements of different types (e.g. `<div>` vs `<span>`) will produce completely different trees, so React unmounts the old tree and mounts the new one without attempting to diff children. Second, elements can be tagged with stable `key` props, allowing React to track identity across re-renders and reorder existing DOM nodes instead of destroying and recreating them."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is React Fiber, and why was the core reconciliation engine rewritten in React 16?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In React 15, the Stack Reconciler was synchronous and recursive. On complex pages, diffing deep component trees blocked the browser's single thread for over 100ms, causing dropped frames and sluggish user inputs. React Fiber replaced the call stack with a virtual linked-list architecture. Fiber splits work into small units and introduces a cooperative two-phase pipeline: the Render Phase (asynchronous and interruptible based on priority) and the Commit Phase (synchronous DOM mutations), enabling Concurrent React and smooth 60fps rendering."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">Why should you never use array index as a key when rendering dynamic lists in React?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Keys provide a persistent identity for React elements across re-renders. If you use array indices and prepend, delete, or sort items, an item's index changes. React pairs items by key; if index `0` is reused for a brand-new item, React assumes the element is the same and merely changed props. This causes serious bugs with component state, uncontrolled inputs keeping old values, and broken transitions. Always use stable, unique IDs from your data source."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is the difference between Props and State? Can a component modify its own props?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Props are external inputs passed from parent to child, acting like function parameters. Props are strictly read-only and immutable; a component must never modify its own props. State is internal data managed and owned by the component itself, acting like local variables that persist across renders. When state updates via its setter function, it triggers a re-render of that component and its children."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is the difference between Controlled and Uncontrolled components? When MUST you use an uncontrolled component?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In a controlled component, form data is handled by React component state via `value` and `onChange`, making React the single source of truth and allowing instant validation. In an uncontrolled component, form data is stored by the native DOM itself and accessed on-demand using a `ref`. You MUST use an uncontrolled component for file inputs (`<input type='file'>`) because the browser security model makes file values read-only, preventing React from programmatically setting the file value."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">Explain the Rules of Hooks and the internal linked-list mechanism that makes them work.</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The two rules are: 1. Only call hooks at the top level (never inside loops, conditions, or nested functions), and 2. Only call hooks from React function components or custom hooks. React enforces this because hooks are stored as a singly linked list on the Fiber's `memoizedState` property without string keys. On every render, React traverses this linked list in the exact order the hooks were declared. If a hook is wrapped in an `if` block and skipped, the pointer mismatches every subsequent hook, corrupting component state."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is 'Lifting State Up', and what architectural problem does it solve?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Lifting state up means moving local state to the closest common ancestor of two or more sibling components that need to share or synchronize that data. In React's unidirectional data flow, siblings cannot pass data sideways directly. By moving the state to their shared parent, the parent passes the state down to both siblings as props, and passes a callback function down to the sibling that needs to update the state."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the purpose of the $$typeof: Symbol(react.element) property in a React element?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "It is a security mechanism designed to prevent Cross-Site Scripting (XSS) attacks. If a server has a vulnerability allowing users to store arbitrary JSON objects, an attacker could forge a fake React element structure containing a malicious `dangerouslySetInnerHTML`. Because JSON cannot serialize JavaScript `Symbol` primitives, client-side parsed JSON will never have a true `Symbol(react.element)`. React inspects this property before rendering and rejects any forged element lacking the symbol."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">How does React's SyntheticEvent system differ from native browser events? What changed in React 17?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "SyntheticEvent is a cross-browser wrapper around the browser's native event, normalizing quirks across different browsers. In React 16 and earlier, React delegated all events to the `document` node and used 'event pooling' (reusing event objects for memory efficiency, requiring `e.persist()` for async use). In React 17+, event pooling was completely removed, and event listeners are attached to the root DOM container (`#root`), making it safer to nest multiple independent React micro-frontends on a single page."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: You have {items.length && <List items={items} />}. When items is [], the UI renders a literal '0'. Why?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In JavaScript, logical `&&` short-circuits and returns the falsy operand itself rather than a boolean. When `items.length` is `0`, JavaScript evaluates `0 && <List />` to the number `0`. React renders numbers as text nodes in the DOM, so the number `0` appears on screen. The fix is to ensure the condition is explicitly boolean, such as `{items.length > 0 && <List />}` or `{Boolean(items.length) && <List />}`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is Component Composition, and how does the 'children' prop facilitate it?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Component composition is the practice of combining smaller, focused components to build complex UIs, favoring composition over class inheritance. The `children` prop represents whatever JSX is nested between a component's opening and closing tags. This allows generic container components—like Cards, Modals, or Layouts—to act as shells that render dynamic child content without needing to know what that content is in advance."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is Double Buffering in React Fiber, and why does Fiber maintain both a 'current' and 'workInProgress' tree?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Double buffering is a graphics rendering technique adopted by React Fiber. React maintains two trees simultaneously: the `current` tree (representing the DOM currently visible on screen) and the `workInProgress` tree (where new updates and reconciliations are computed off-screen). While the render phase executes, React works entirely on the workInProgress tree. If rendering is interrupted, the visible screen is untouched. Once reconciliation finishes, React swaps pointers in an instant atomic operation during the Commit phase."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">Why must React state never be mutated directly (e.g., state.count = 5)?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Directly mutating state bypasses React's change detection. React triggers re-renders only when state setter functions (`setState` or `useState` dispatcher) are called. Furthermore, React compares previous and next states using shallow reference equality (`Object.is`). If you mutate an object or array in place, its memory reference remains identical, causing React and PureComponents to assume nothing changed and skip necessary UI updates."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is the difference between the Render Phase and the Commit Phase in React?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Render phase is asynchronous and pure: React executes component functions, builds the Fiber work-in-progress tree, runs the diffing algorithm, and calculates side-effect tags (flags). It does NOT alter the DOM and can be paused or restarted by React. The Commit phase is synchronous and uninterruptible: React applies all computed changes to the real DOM, swaps the Fiber trees, and invokes layout and passive effects."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">Scenario: You have a form with 20 inputs. Typing in one input feels laggy because the entire form re-renders on every keystroke. How do you diagnose and fix this?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "First, I would verify the issue using the React DevTools Profiler with 'Highlight updates when components render'. The root cause is likely a single top-level state object updating on every keystroke, causing all 20 input components to re-render. To fix it: 1. Isolate state by colocating input state inside each individual field component or using a library like React Hook Form that leverages uncontrolled inputs with refs. 2. Wrap heavy display subcomponents in `React.memo` with memoized callbacks (`useCallback`) so they don't re-render when sibling inputs update."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What are Fragments (<></> or <React.Fragment>), and why are they needed?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In JSX, a component must return a single root element. If you have multiple sibling elements to return, wrapping them in an extra `<div>` pollutes the DOM tree with unnecessary wrapper nodes, which can break CSS Flexbox, Grid layouts, or HTML table structures (e.g. `<tr>` containing `<div>`). A Fragment allows grouping multiple children without adding an extra node to the DOM. The explicit syntax `<React.Fragment key={id}>` also supports keys when rendering lists."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How does React handle Priority Scheduling with Lanes in modern Concurrent React?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Concurrent React replaces the simple expiration time queue with a 31-bit integer bitmask system called 'Lanes'. Each lane represents a priority category (e.g., SyncLane for user typing/clicks, InputContinuousLane for mouse moves, DefaultLane for data fetches, and TransitionLane for tab switches). Using bitwise operators, React can pause a low-priority background transition lane if a discrete high-priority lane (like a keystroke) arrives, process the urgent lane immediately, and then resume or discard the background work."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

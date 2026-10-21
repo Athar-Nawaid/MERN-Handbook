@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 7: Node.js Fundamentals | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to Node.js backend engineering: V8 & libuv internals, non-blocking I/O, event loop phases, worker threads, cluster mode, buffers, streams, and graceful shutdown.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="7">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART II — Node.js and Express.js Backend Engineering</div>
+          <h1 class="chapter-title">Chapter 7: Node.js Fundamentals</h1>
+          <p class="chapter-lead">
+            Inside the server runtime: The V8 engine, libuv architecture, non-blocking I/O mechanics, the 6 event loop phases, worker threads vs child processes vs cluster clustering, Buffers, Streams, and production-grade graceful shutdown pipelines.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Node.js Runtime</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand the architecture of Node.js: V8 JavaScript Engine, Node.js Bindings, and the <strong>libuv C library</strong>.</li>
+            <li>Master the libuv thread pool: Default size (4), which operations use it (fs, crypto, zlib, dns.lookup), and how to tune <code>UV_THREADPOOL_SIZE</code>.</li>
+            <li>Differentiate between <strong>Worker Threads</strong>, <strong>Child Processes</strong>, and the <strong>Cluster module</strong> for CPU scaling.</li>
+            <li>Manipulate raw binary data using <code>Buffer</code> and understand heap vs off-heap memory.</li>
+            <li>Build efficient memory pipelines with <strong>Node.js Streams</strong> and avoid memory bloat with <code>pipeline()</code> and backpressure.</li>
+            <li>Handle OS signals (<code>SIGTERM</code>, <code>SIGINT</code>) and implement safe zero-downtime <strong>Graceful Shutdown</strong>.</li>
+            <li>Diagnose event loop latency bottlenecks and CPU-bound blocking in production servers.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Node.js Architecture: V8, Libuv, and the Thread Pool</h2>
+        <p>
+          Node.js is not a programming language, framework, or library. Node.js is an <strong>asynchronous event-driven JavaScript runtime environment</strong> designed to execute JavaScript outside of the browser.
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++-------------------------------------------------------------------------------+
+|                             YOUR APPLICATION CODE                             |
+|                           (JavaScript / TypeScript)                           |
++-------------------------------------------------------------------------------+
+                                        |
++---------------------------------------+---------------------------------------+
+|                       NODE.JS STANDARD LIBRARY / APIS                         |
+|                     (fs, http, crypto, path, stream, net)                     |
++-------------------------------------------------------------------------------+
+                                        |
++---------------------------------------+---------------------------------------+
+|                         NODE.JS C++ BINDINGS / ADDONS                         |
+|                   (Glue layer exposing C++ system calls to JS)                |
++-------------------------------------------------------------------------------+
+                    |                                       |
++-------------------+-------------------+   +---------------+-------------------+
+|            V8 ENGINE (C++)            |   |           LIBUV (C)               |
+| - Parses JS into AST                  |   | - Event Loop (6 Phases)           |
+| - JIT Compilation (Ignition/TurboFan) |   | - Thread Pool (Default: 4 threads)|
+| - Call Stack & Memory Heap Management |   | - Asynchronous Non-blocking I/O   |
+| - Garbage Collection (Mark-and-Sweep) |   | - Cross-platform OS Abstraction   |
++---------------------------------------+   +-----------------------------------+
+                    |                                       |
++-------------------------------------------------------------------------------+
+|                       OPERATING SYSTEM KERNEL (Layer 0)                       |
+|         (epoll on Linux, kqueue on macOS, I/O Completion Ports on Windows)    |
++-------------------------------------------------------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 7.1: Node.js Multi-Layered Architectural Diagram</div>
+        </div>
+
+        <h3>The Libuv Thread Pool</h3>
+        <p>
+          While the JavaScript engine is single-threaded, libuv maintains a background <strong>Thread Pool</strong> (default size: 4 threads) to execute operations that operating system kernels cannot handle asynchronously:
+        </p>
+        <ul>
+          <li><strong>File System operations (<code>fs</code>):</strong> Most OS kernels do not offer true non-blocking file I/O APIs. All <code>fs.readFile</code>, <code>fs.writeFile</code> calls are dispatched to libuv worker threads.</li>
+          <li><strong>Cryptographic functions (<code>crypto</code>):</strong> CPU-intensive algorithms like <code>crypto.pbkdf2()</code>, <code>crypto.scrypt()</code>, and random byte generation.</li>
+          <li><strong>Compression (<code>zlib</code>):</strong> Gzip and Brotli compression/decompression operations.</li>
+          <li><strong>DNS Lookups (<code>dns.lookup</code>):</strong> Uses system <code>getaddrinfo(3)</code>, which is blocking and runs in the thread pool. (Note: <code>dns.resolve*</code> uses asynchronous network sockets directly and does <em>not</em> consume thread pool slots!).</li>
+        </ul>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">💡 Production Optimization: UV_THREADPOOL_SIZE</div>
+          <p>
+            If your backend processes heavy cryptographic password hashing (e.g. bcrypt) or concurrent disk I/O, 4 threads can easily bottleneck. You can increase the thread pool size up to 128 by setting the environment variable before Node starts:<br>
+            <code>UV_THREADPOOL_SIZE=16 node server.js</code>
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <h2>2. Concurrency Paradigms: Worker Threads vs Child Processes vs Cluster</h2>
+        <p>
+          Because Node.js runs on a single main event loop, running heavy CPU-bound tasks (like resizing images, generating PDFs, or machine learning calculations) will block the thread, causing all concurrent HTTP requests to freeze.
+        </p>
+        <p>
+          Node.js provides three distinct mechanisms to achieve multi-core parallelism:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Mechanism</th>
+                <th>Memory Model</th>
+                <th>Overhead & Startup</th>
+                <th>IPC Communication</th>
+                <th>Best Architectural Fit</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Worker Threads (<code>worker_threads</code>)</strong></td>
+                <td><strong>Shared Process</strong>: Separate V8 instances with shared process memory (can share <code>SharedArrayBuffer</code>).</td>
+                <td>Very lightweight; fast thread creation.</td>
+                <td><code>MessagePort</code> (postMessage) or zero-copy shared memory.</td>
+                <td>CPU-intensive calculations (video processing, compression, cryptography, PDF generation).</td>
+              </tr>
+              <tr>
+                <td><strong>Child Processes (<code>child_process</code>)</strong></td>
+                <td><strong>Isolated Memory</strong>: Completely independent OS processes with their own memory space and PID.</td>
+                <td>Heavier (~30MB+ per process); slower startup.</td>
+                <td>Inter-Process Communication (IPC) channels, pipes, standard I/O (stdin/stdout).</td>
+                <td>Executing external system commands, running Python/Bash scripts, or running isolated untrusted code.</td>
+              </tr>
+              <tr>
+                <td><strong>Cluster Module (<code>cluster</code>)</strong></td>
+                <td><strong>Forked Isolated Processes</strong>: Forks multiple instances of the Node.js server sharing a single server port.</td>
+                <td>Heavy (one full Node process per CPU core).</td>
+                <td>IPC messaging between Primary and Workers; OS socket sharing.</td>
+                <td>Horizontal multi-core scaling for HTTP web servers on bare-metal or single VMs (often managed via PM2).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>The Cluster Module in Action</h3>
+        <pre><code class="language-javascript">// cluster-server.js
+const cluster = require('cluster');
+const http = require('http');
+const os = require('os');
+
+if (cluster.isPrimary) {
+  const numCPUs = os.cpus().length;
+  console.log(`Primary master ${process.pid} is running. Forking ${numCPUs} workers...`);
+
+  // Fork a worker process for every CPU core
+  for (let i = 0; i < numCPUs; i++) {
+    cluster.fork();
+  }
+
+  // Auto-restart failed worker processes (Self-Healing)
+  cluster.on('exit', (worker, code, signal) => {
+    console.warn(`Worker ${worker.process.pid} died (code: ${code}). Spawning replacement...`);
+    cluster.fork();
+  });
+} else {
+  // Workers share the exact same underlying TCP port (3000)!
+  http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ workerPid: process.pid, timestamp: new Date() }));
+  }).listen(3000);
+
+  console.log(`Worker process ${process.pid} started and listening on port 3000.`);
+}</code></pre>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <h2>3. Buffers and Binary Data</h2>
+        <p>
+          Pure JavaScript historically had no mechanism for manipulating raw binary memory streams. Node.js introduced the <strong><code>Buffer</code></strong> class: a global, fixed-length sequence of bytes allocated in <strong>raw off-heap memory outside V8</strong>.
+        </p>
+
+        <pre><code class="language-javascript">// Allocating and Manipulating Buffers
+// 1. Buffer.alloc(size) - Zero-filled, safe memory allocation
+const safeBuf = Buffer.alloc(10); // 10 bytes initialized to 0x00
+
+// 2. Buffer.allocUnsafe(size) - Fast, but contains old uncleaned memory!
+// Never expose allocUnsafe data to clients without writing over it first.
+const fastBuf = Buffer.allocUnsafe(10);
+
+// 3. Buffer.from() - Create buffer from string or array
+const buf = Buffer.from("FullStack", "utf-8");
+console.log(buf);            // <Buffer 46 75 6c 6c 53 74 61 63 6b> (Hex representation)
+console.log(buf.toString("hex"));    // "46756c6c537461636b"
+console.log(buf.toString("base64")); // "RnVsbFN0YWNr"
+console.log(buf.length);             // 9 bytes
+
+// Buffer slicing shares the SAME underlying memory!
+const slice = buf.subarray(0, 4);
+slice[0] = 0x58; // 'X'
+console.log(buf.toString("utf-8")); // "XullStack" (Original mutated!)</code></pre>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <h2>4. Node.js Streams and Backpressure</h2>
+        <p>
+          A <strong>Stream</strong> is an abstract interface for handling streaming data sequentially chunk-by-chunk, rather than loading an entire file into RAM at once.
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++------------------------+      Chunks of Data      +------------------------+
+|    Readable Stream     | =======================> |    Writable Stream     |
+| (fs.createReadStream)  |                          | (res / http.ServerRes) |
++------------------------+                          +------------------------+
+            ^                                                   |
+            |              PAUSE / RESUME (Backpressure)        |
+            +---------------------------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 7.2: Stream Flow with Automatic Backpressure Management</div>
+        </div>
+
+        <h3>The 4 Types of Streams</h3>
+        <ul>
+          <li><strong>Readable:</strong> Abstraction for a source from which data can be consumed (e.g., <code>fs.createReadStream</code>, <code>req</code> in Express).</li>
+          <li><strong>Writable:</strong> Abstraction for a destination to which data can be written (e.g., <code>fs.createWriteStream</code>, <code>res</code> in Express).</li>
+          <li><strong>Duplex:</strong> Both Readable and Writable (e.g., a TCP <code>net.Socket</code>).</li>
+          <li><strong>Transform:</strong> A Duplex stream that modifies or transforms data as it is read and written (e.g., <code>zlib.createGzip()</code>, crypto cipher streams).</li>
+        </ul>
+
+        <h3>Safe Streaming with <code>stream.promises.pipeline</code></h3>
+        <p>
+          Legacy <code>readable.pipe(writable)</code> has a dangerous flaw: if an error occurs in the middle of the stream, it does not destroy the destination stream, causing <strong>memory and file descriptor leaks</strong>! Modern production code strictly uses <strong><code>pipeline</code></strong>:
+        </p>
+
+        <pre><code class="language-javascript">const { pipeline } = require('stream/promises');
+const fs = require('fs');
+const zlib = require('zlib');
+
+async function compressFile(inputPath, outputPath) {
+  try {
+    // Automatically handles backpressure, error propagation, and stream cleanup!
+    await pipeline(
+      fs.createReadStream(inputPath),
+      zlib.createGzip(),
+      fs.createWriteStream(outputPath)
+    );
+    console.log(`Successfully compressed ${inputPath} -> ${outputPath}`);
+  } catch (err) {
+    console.error('Pipeline failed and safely cleaned up streams:', err);
+  }
+}</code></pre>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <h2>5. Process Lifecycle, OS Signals, and Graceful Shutdown</h2>
+        <p>
+          In containerized cloud environments (Docker, Kubernetes, AWS ECS), deployment updates destroy and replace application containers constantly. When an orchestrator decides to stop a container, it sends the operating system signal <strong><code>SIGTERM</code></strong>.
+        </p>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">🚨 The Anti-Pattern: Instant Abrupt Process Exit</div>
+          <p>
+            If your application terminates abruptly without handling <code>SIGTERM</code>, active client HTTP requests are immediately severed with socket hang-ups (<code>502 Bad Gateway</code>), in-flight database transactions are aborted, and data corruption can occur!
+          </p>
+        </div>
+
+        <h3>Production-Grade Graceful Shutdown Pattern</h3>
+        <pre><code class="language-javascript">const http = require('http');
+
+const server = http.createServer((req, res) => {
+  // Simulate database query
+  setTimeout(() => {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok' }));
+  }, 1000);
+});
+
+server.listen(3000, () => {
+  console.log('Server actively running on port 3000');
+});
+
+// Graceful Shutdown Coordinator
+function handleShutdown(signal) {
+  console.log(`\n[${signal}] Received shutdown signal. Starting graceful shutdown...`);
+
+  // 1. Stop accepting NEW incoming HTTP connections
+  server.close(() => {
+    console.log('1. HTTP server closed. All pending client requests completed.');
+
+    // 2. Drain and close database connection pools
+    // await db.pool.end();
+    console.log('2. Database connection pools drained and closed.');
+
+    // 3. Close Redis cache clients and message queues
+    // await redisClient.quit();
+    console.log('3. Cache and queue connections closed.');
+
+    console.log('Shutdown complete. Process exiting cleanly.');
+    process.exit(0);
+  });
+
+  // 4. Fallback Force Exit if operations hang
+  setTimeout(() => {
+    console.error('Forceful shutdown triggered! Active connections failed to close in time.');
+    process.exit(1);
+  }, 10000); // 10-second hard deadline
+}
+
+// Listen for termination signals
+process.on('SIGTERM', () => handleShutdown('SIGTERM')); // Kubernetes / Docker stop
+process.on('SIGINT', () => handleShutdown('SIGINT'));   // Terminal Ctrl+C
+
+// Catch unhandled application crashes
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL: Uncaught Exception:', err);
+  handleShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL: Unhandled Promise Rejection at:', promise, 'reason:', reason);
+  handleShutdown('unhandledRejection');
+});</code></pre>
+
+        <hr>
+
+        <!-- Section 6: Practical Exercise -->
+        <h2>6. Practical Exercise: CPU Offloading with Worker Threads</h2>
+
+        <div class="exercise-box">
+          <div class="exercise-header">
+            <span>Exercise 7.1: Offloading Heavy Hashing to a Worker Thread</span>
+            <span class="meta-pill">Production Architecture</span>
+          </div>
+          <div class="exercise-body">
+            <p>
+              In a single-threaded server, generating a complex cryptographic hash or Argon2/Bcrypt hash synchronously blocks the event loop for 300ms–1000ms. Build a Worker Thread script that runs the hash on a separate OS thread and returns the result via <code>parentPort</code>.
+            </p>
+
+            <pre><code class="language-javascript">// worker.js
+const { parentPort, workerData } = require('worker_threads');
+const crypto = require('crypto');
+
+// CPU-heavy PBKDF2 key derivation running on separate background thread
+crypto.pbkdf2(workerData.password, 'salt-key-99', 1000000, 64, 'sha512', (err, derivedKey) => {
+  if (err) throw err;
+  // Send derived hash back to the main thread
+  parentPort.postMessage({
+    hash: derivedKey.toString('hex')
+  });
+});</code></pre>
+
+            <pre><code class="language-javascript">// main.js
+const { Worker } = require('worker_threads');
+const path = require('path');
+
+function hashPasswordInBackground(password) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'worker.js'), {
+      workerData: { password }
+    });
+
+    worker.on('message', resolve);
+    worker.on('error', reject);
+    worker.on('exit', (code) => {
+      if (code !== 0) reject(new Error(`Worker stopped with exit code ${code}`));
+    });
+  });
+}
+
+// Usage in Express handler:
+// const result = await hashPasswordInBackground(req.body.password);
+// Main event loop continues serving other HTTP requests with ZERO blocking!</code></pre>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 7: Interview Questions and Answers -->
+        <section class="interview-section">
+          <h2>Interview Questions and Answers</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            20 technical interview questions testing your deep knowledge of Node.js internals, libuv, event loop phases, process memory, streams, and production architecture.
+          </p>
+
+          <div class="qa-toolbar">
+            <div class="qa-filter-btns">
+              <button class="qa-filter-btn active" data-filter="all">All (20)</button>
+              <button class="qa-filter-btn" data-filter="beginner">Beginner</button>
+              <button class="qa-filter-btn" data-filter="intermediate">Intermediate</button>
+              <button class="qa-filter-btn" data-filter="advanced">Advanced</button>
+              <button class="qa-filter-btn" data-filter="scenario">Scenario</button>
+            </div>
+            <button class="qa-toggle-all" type="button">Expand All Answers</button>
+          </div>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What is Node.js, and what does it mean that Node is "single-threaded"?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Node.js is an asynchronous, event-driven JavaScript runtime built on Chrome's V8 engine and the libuv C library. When we say Node.js is 'single-threaded', we mean that your JavaScript application code executes on a single main Call Stack on a single thread. However, Node.js as a platform is multi-threaded under the hood: libuv maintains a background thread pool for operations like disk I/O, cryptography, and DNS lookups, and delegates network I/O directly to operating system kernel mechanisms like epoll or kqueue."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">What is libuv, and what are the two main ways it handles asynchronous operations?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "libuv is a cross-platform C library that powers Node.js's event loop and non-blocking I/O. It handles asynchrony in two ways: 1. Native OS kernel mechanisms (like epoll on Linux, kqueue on macOS, and IOCP on Windows) for network sockets and timers, requiring zero extra threads. 2. A background Thread Pool (default 4 threads) for operations that OS kernels cannot handle asynchronously, specifically file system calls, DNS lookup, zlib compression, and CPU-intensive crypto functions."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">Name the 6 phases of the Node.js event loop in order. What executes in each phase?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In order: 1. Timers phase (executes callbacks from expired setTimeout and setInterval). 2. Pending Callbacks phase (executes deferred I/O callbacks from previous ticks, like TCP errors). 3. Idle, Prepare phase (internal libuv housekeeping). 4. Poll phase (retrieves new I/O events from the OS and executes their callbacks; blocks if no other timers are ready). 5. Check phase (executes callbacks registered by `setImmediate`). 6. Close Callbacks phase (executes close event handlers like socket.on('close'))."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">Compare Worker Threads, Child Processes, and the Cluster module. When do you use each?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Worker Threads share process memory and are lightweight; we use them to offload CPU-intensive JavaScript tasks like video encoding, cryptography, or PDF generation. Child Processes run completely independent OS processes with their own memory space; we use them to execute external binaries or scripts in other languages like Python or Bash. The Cluster module forks multiple copies of the Node server that share the same port; we use it to horizontally scale an HTTP server across all available CPU cores on a machine."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What is Backpressure in Node.js streams? How do you handle it properly?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Backpressure occurs when data is read from a Readable stream faster than the Writable destination can write it, causing unconsumed chunks to accumulate in memory. When the internal buffer hits the `highWaterMark`, `writable.write()` returns `false`, signaling the reader to pause. The reader resumes only when the writer emits the `drain` event. In production, we handle backpressure automatically by using `stream.promises.pipeline()` instead of manual event listening or raw `.pipe()`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">What is a `Buffer` in Node.js, and why does it exist?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A `Buffer` is a global class in Node.js designed to handle raw binary data directly. Unlike regular JavaScript arrays which store dynamic objects, a Buffer represents a fixed-length chunk of memory allocated outside of V8's memory heap. It is essential in backend programming for handling raw TCP network packets, reading binary files (like images or PDFs), and performing cryptographic hashing."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">Why should you avoid `Buffer.allocUnsafe()` unless you immediately overwrite it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`Buffer.alloc(size)` initializes all allocated bytes to zero, ensuring clean memory. `Buffer.allocUnsafe(size)` allocates memory without zeroing it out for faster performance. However, because that memory chunk might contain remnants of old sensitive data (like database passwords, credit cards, or user tokens from previous operations), exposing an uninitialized unsafe buffer to a client is a severe security vulnerability. Always use `Buffer.alloc()` by default."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">What is the difference between `fs.readFile()` and `fs.createReadStream()`?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`fs.readFile()` reads the ENTIRE file into memory buffer before invoking its callback or returning the promise. If you read a 2GB video file, it consumes 2GB of server RAM, risking Out-Of-Memory crashes. `fs.createReadStream()` reads the file in small sequential chunks (default 64KB) over time, keeping memory consumption virtually flat regardless of file size."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">What is a Graceful Shutdown, and why is it essential in cloud deployments?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A graceful shutdown intercepts OS termination signals (`SIGTERM`, `SIGINT`) sent during deployments or auto-scaling. Rather than instantly killing the process, it: 1. Stops accepting new incoming HTTP connections, 2. Allows existing in-flight HTTP requests to complete, 3. Drains and closes database connection pools and Redis clients, and 4. Exits cleanly with status code 0. This prevents severed user requests (502 Bad Gateway) and database transaction corruption."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">Scenario: An Express API endpoint calculates Fibonacci numbers. When one user requests a large number, ALL other users experience timeouts. Why, and how do you fix it?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Because Node.js runs on a single thread, synchronous CPU-intensive calculations completely monopolize the Call Stack. While Fibonacci computes, the Event Loop cannot process ANY incoming network I/O, timers, or database responses, freezing the server for all concurrent clients. I fix this by offloading the calculation to a Worker Thread (or a background queue like BullMQ with Redis), keeping the main event loop responsive."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the difference between `uncaughtException` and `unhandledRejection`? How should you handle them?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`uncaughtException` fires when a synchronous JavaScript exception is thrown and never caught by a try/catch block. `unhandledRejection` fires when a Promise rejects and has no `.catch()` handler. Both indicate your application is in an unpredictable state. The only safe handling pattern is to log the error to a monitoring tool (like Sentry), trigger a graceful shutdown, and exit the process, allowing a process manager (PM2 or Kubernetes) to spawn a fresh, clean process."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">How does the Cluster module distribute incoming connections among worker processes?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "On all platforms except Windows, Node.js uses a Round-Robin approach by default: the Primary (master) process listens on the server port, accepts incoming TCP connection sockets, and distributes them evenly across worker processes using internal IPC handles. On Windows (or when configured), the master creates the listening socket and passes it to workers directly, allowing the OS kernel to accept incoming connections."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is `process.env`, and how should configuration be managed across environments?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`process.env` is an object exposing the system environment variables of the operating system process. In modern backend engineering, we adhere to the 12-Factor App methodology: all environment-specific configurations (database connection strings, port numbers, API secret keys) are injected via environment variables (loaded via `.env` files in development or container secrets in production) rather than hardcoded in the codebase."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the difference between `child_process.exec()` and `child_process.spawn()`?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`exec()` spawns a shell and buffers the command's ENTIRE stdout and stderr output in memory before passing it to a callback; it has a default maxBuffer limit (1MB) and can cause security risks if user input is passed directly to the shell. `spawn()` executes the command directly without a shell, streaming the output via standard I/O streams (stdout/stderr). `spawn()` is far safer, handles large volumes of output without buffer overflows, and is preferred in production."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">Scenario: You observe your Node.js server's memory steadily climbing from 100MB to 1.8GB before crashing with `FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory`. What happened, and how do you diagnose it?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "This indicates a severe memory leak. By default, V8 limits heap memory to ~1.4GB on 64-bit systems. Objects are being retained and cannot be garbage collected. To diagnose: 1. Launch Node with the `--inspect` flag. 2. Take a Heap Snapshot in Chrome DevTools under idle load. 3. Run a load test and take a second snapshot. 4. Use the 'Comparison' view to find objects with growing 'Retained Size'. Common culprits in Node include unbounded global arrays acting as caches, uncleaned event listeners, or closures capturing heavy request objects."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How do you increase V8's default memory limit in Node.js? When is this appropriate?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "By passing the flag `--max-old-space-size=<megabytes>`: for example, `node --max-old-space-size=4096 server.js` raises the heap limit to 4GB. This is appropriate for legitimately memory-heavy batch workers (like ETL data processing or large bundle builds). However, raising the heap limit to fix a memory leak in a web server is an anti-pattern: it only delays the crash while making garbage collection pauses longer."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is the difference between `fs.promises` and the legacy callback `fs` API?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The legacy `fs` module relies on error-first callbacks `(err, data) => ...`, which can lead to callback hell and awkward error bubbling. `fs.promises` (or `require('fs/promises')`) exposes the identical file system operations returning native Promises, allowing clean, linear error handling using `async/await` and `try/catch`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is the purpose of `SharedArrayBuffer` and `Atomics` with Worker Threads?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Standard Worker Thread communication via `postMessage` serializes and copies data (using the structured clone algorithm), which introduces CPU overhead for gigabyte-scale data. A `SharedArrayBuffer` allows the main thread and worker threads to share the exact same physical memory buffer without copying. To prevent race conditions and torn reads/writes across multiple threads modifying the same buffer, the `Atomics` API provides atomic read, write, and compare-and-swap operations."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is the difference between I/O-bound and CPU-bound workloads? Why is Node.js considered optimal for I/O-bound tasks?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An I/O-bound task spends most of its time waiting for external responses (database queries, network API calls, disk reads). A CPU-bound task spends its time performing heavy mathematical computations on the processor (cryptography, video transcoding). Node.js is optimal for I/O-bound tasks because its non-blocking event loop can initiate thousands of concurrent network connections without allocating thread stack memory for each connection (which multithreaded servers like Java Tomcat or Apache do), resulting in high throughput with low memory footprint."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">Scenario: You are deploying a Node.js server with Docker on an 8-core CPU server. If you run `node server.js` directly, how many cores will it utilize? How do you leverage all 8 cores?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`node server.js` runs as a single process and will utilize only 1 CPU core for the JavaScript event loop (leaving the other 7 cores idle). To leverage all 8 cores, there are two primary architectures: 1. Application-level clustering using Node's `cluster` module or a process manager like PM2 (`pm2 start server.js -i max`), which forks 8 worker processes. 2. Infrastructure-level container scaling (the preferred cloud approach), where we run 8 separate Docker container instances behind an Nginx reverse proxy or cloud load balancer."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

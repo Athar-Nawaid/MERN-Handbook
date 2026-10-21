@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 38: Docker and Containers | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master production Docker and containerization: VMs vs Containers, Linux namespaces & cgroups, multi-stage Dockerfiles for Node.js and React, layer caching, and Docker Compose orchestration.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="38">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VIII — DevOps, Deployment, and Production Readiness</div>
+          <h1 class="chapter-title">Chapter 38: Docker and Containers</h1>
+          <p class="chapter-lead">
+            Containerization from the metal up: Virtual Machines vs. Containers, Linux kernel namespaces and Control Groups (cgroups), Docker engine architecture, layer caching economics, production multi-stage builds for Node.js and React, networking drivers, persistent volume strategies, and multi-service Docker Compose orchestration.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Docker &amp; Containers</span>
+              <span class="meta-pill">Multi-Stage Builds</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Contrast <strong>Virtual Machines (VMs)</strong> against <strong>Containers</strong> across kernel sharing, boot latency, memory footprint, and isolation depth.</li>
+            <li>Deconstruct the Linux kernel primitives that power containers: <strong>Namespaces</strong> (isolation) and <strong>Control Groups (cgroups)</strong> (resource limits).</li>
+            <li>Master the <strong>Overlay2 Union File System</strong> and the mechanics of Docker <strong>Layer Caching</strong>.</li>
+            <li>Architect production-grade, secure <strong>Multi-Stage Dockerfiles</strong> for Node.js and React reducing image sizes from 1.2 GB to under 90 MB.</li>
+            <li>Configure container networking (Bridge vs Host) and inter-container DNS resolution.</li>
+            <li>Distinguish <strong>Named Volumes</strong> (persistent database state) from <strong>Bind Mounts</strong> (local development hot reloading).</li>
+            <li>Orchestrate full multi-service development stacks (Express, PostgreSQL, Redis) with <strong>Docker Compose</strong> and health check dependencies.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Virtual Machines vs. Containers</h2>
+        <p>
+          Containers and Virtual Machines solve the fundamental problem of software isolation, but they operate at fundamentally different abstraction boundaries in the computing stack:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Virtual Machines vs Docker Containers</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">     VIRTUAL MACHINE ARCHITECTURE                       CONTAINER ARCHITECTURE
++--------------------+--------------------+       +--------------------+--------------------+
+| App A + Libraries  | App B + Libraries  |       | App A + Libraries  | App B + Libraries  |
++--------------------+--------------------+       +--------------------+--------------------+
+| Guest OS Kernel A  | Guest OS Kernel B  |       | Container Engine (Docker / containerd)  |
+| (Heavy: ~500MB RAM)| (Heavy: ~500MB RAM)|       +-----------------------------------------+
++--------------------+--------------------+       | Shared Host Linux Kernel                |
+| Hypervisor (ESXi, KVM, VirtualBox)      |       | (Namespaces + Cgroups)                  |
++-----------------------------------------+       +-----------------------------------------+
+| Host Physical Hardware (CPU, RAM, Disk) |       | Host Physical Hardware (CPU, RAM, Disk) |
++-----------------------------------------+       +-----------------------------------------+</code></pre>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Architectural Dimension</th>
+                <th>Virtual Machines (VMs)</th>
+                <th>Docker Containers</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Operating System Kernel</strong></td>
+                <td>Each VM runs a complete, independent <strong>Guest OS Kernel</strong> on top of virtualized hardware.</td>
+                <td>Containers share the <strong>Host Linux Kernel</strong> directly. A container is simply an isolated Linux process.</td>
+              </tr>
+              <tr>
+                <td><strong>Startup Latency</strong></td>
+                <td>Minutes: must boot a full operating system kernel, initialize devices, and start systemd services.</td>
+                <td>Milliseconds: starting a container is as fast as starting a normal OS process.</td>
+              </tr>
+              <tr>
+                <td><strong>Memory &amp; Disk Footprint</strong></td>
+                <td>Gigabytes: requires full disk images and hundreds of megabytes of RAM per guest OS kernel.</td>
+                <td>Megabytes: images share underlying base layers; RAM usage is strictly what the application code consumes.</td>
+              </tr>
+              <tr>
+                <td><strong>Isolation Boundary</strong></td>
+                <td><strong>Hard Hardware Isolation:</strong> Hypervisor uses CPU hardware virtualization instructions (Intel VT-x / AMD-V).</td>
+                <td><strong>Soft OS Isolation:</strong> Kernel namespaces and cgroups. A compromised kernel can theoretically affect all containers.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Under the Hood: Namespaces, Cgroups, and OverlayFS</h2>
+        <p>
+          There is no such thing as a "container" in the Linux kernel. A container is an ordinary Linux process governed by three kernel subsystems:
+        </p>
+
+        <h3>1. Linux Namespaces (What the Process Can See)</h3>
+        <p>Namespaces provide the illusion of a dedicated operating system by virtualizing system resources:</p>
+        <ul>
+          <li><strong>PID Namespace:</strong> Isolates process IDs. The container's primary process becomes <strong>PID 1</strong> inside the container, while appearing as a normal high PID (e.g., PID 28490) on the host system.</li>
+          <li><strong>NET Namespace:</strong> Isolates network interfaces, IP addresses, routing tables, and port numbers. Container gets its own <code>eth0</code> interface and <code>localhost</code> loopback.</li>
+          <li><strong>MNT Namespace:</strong> Isolates filesystem mount points. The container sees only its isolated root filesystem (<code>/</code>).</li>
+          <li><strong>IPC Namespace:</strong> Isolates Inter-Process Communication (shared memory segments, message queues).</li>
+          <li><strong>UTS Namespace:</strong> Isolates hostname and NIS domain name.</li>
+          <li><strong>USER Namespace:</strong> Maps a non-root user inside the container to an unprivileged UID on the host, preventing host root privilege escalation.</li>
+        </ul>
+
+        <h3>2. Control Groups (cgroups) (How Much the Process Can Use)</h3>
+        <p>
+          While namespaces restrict visibility, <strong>cgroups</strong> enforce hard physical resource boundaries on CPU, memory, and disk I/O. For example, passing <code>--memory="512m" --cpus="1.5"</code> instructs the kernel scheduler to throttle CPU cycles and trigger an Out-Of-Memory (OOM) killer if RAM exceeds 512 MB.
+        </p>
+
+        <h3>3. Overlay2 Union File System</h3>
+        <p>
+          Docker images are composed of stacked read-only layers. When a container runs, Docker attaches a thin <strong>Read-Write Container Layer</strong> on top using the <strong>Copy-on-Write (CoW)</strong> strategy. If the container modifies a file from a lower layer, Overlay2 copies the file up to the read-write layer, leaving the underlying base image immutable.
+        </p>
+
+        <!-- Section 3 -->
+        <h2>3. Dockerfile Best Practices &amp; Layer Caching</h2>
+        <p>
+          Every instruction in a <code>Dockerfile</code> (e.g., <code>RUN</code>, <code>COPY</code>) creates a distinct immutable image layer. Docker caches layers; if an instruction and all preceding instructions are unchanged, Docker reuses the cached layer instantly.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Docker Layer Cache Optimization</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">❌ BAD DOCKERFILE ORDER (Breaks Cache on every code edit):
+COPY . .                      &lt;-- Any single file change invalidates this layer!
+RUN npm install               &lt;-- RE-RUNS EXPENSIVE 3-MINUTE NPM INSTALL ON EVERY COMMIT!
+
+✅ OPTIMIZED DOCKERFILE ORDER (Maximizes Cache Hits):
+COPY package*.json ./         &lt;-- Only invalidates when dependencies change!
+RUN npm ci --only=production  &lt;-- CACHED! Takes 0.0 seconds unless packages change!
+COPY . .                      &lt;-- Fast copy of source code; takes 100ms</code></pre>
+        </div>
+
+        <h3>CMD vs. ENTRYPOINT</h3>
+        <ul>
+          <li><strong><code>ENTRYPOINT</code>:</strong> Defines the fixed binary or executable that runs when the container starts (e.g., <code>ENTRYPOINT ["node"]</code>).</li>
+          <li><strong><code>CMD</code>:</strong> Provides default arguments to the entrypoint that can be overridden by arguments passed at the command line (e.g., <code>CMD ["dist/server.js"]</code>).</li>
+          <li><em>Best Practice:</em> Always use the <strong>Exec Form</strong> (JSON array: <code>["node", "server.js"]</code>) rather than the Shell Form (<code>node server.js</code>). The shell form spawns an intermediate <code>/bin/sh -c</code> wrapper as PID 1, which swallows <code>SIGTERM</code> signals and prevents graceful shutdowns!</li>
+        </ul>
+
+        <!-- Section 4 -->
+        <h2>4. Production Multi-Stage Builds</h2>
+        <p>
+          In TypeScript and React development, compiling source code requires heavy build tools (TypeScript compiler, Webpack/Vite, Babel, ESLint, devDependencies). Leaving these in the final production image creates 1.2 GB+ bloated images containing attack vectors and private source files.
+        </p>
+        <p>
+          <strong>Multi-Stage Builds</strong> solve this by compiling code in a disposable "builder" stage and copying only the compiled artifacts into a pristine, minimal production runtime image:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">Dockerfile: Production Node.js TypeScript Multi-Stage Build</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-dockerfile"># ==========================================
+# STAGE 1: Dependency &amp; Build Stage
+# ==========================================
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Copy dependency manifests
+COPY package*.json tsconfig.json ./
+
+# Install ALL dependencies (including TypeScript devDependencies)
+RUN npm ci
+
+# Copy application source code
+COPY src/ ./src/
+
+# Compile TypeScript to JavaScript in /app/dist
+RUN npm run build
+
+# Prune devDependencies to keep only production packages
+RUN npm prune --production
+
+# ==========================================
+# STAGE 2: Lean Production Runtime Stage
+# ==========================================
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Security Hardening: Run as unprivileged 'node' user instead of root
+USER node
+
+# Copy only production dependencies and compiled JS from builder stage
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/dist ./dist
+COPY --chown=node:node --from=builder /app/package.json ./package.json
+
+EXPOSE 3000
+
+# Healthcheck to allow Docker/orchestrator to detect crashed event loops
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3000/healthz || exit 1
+
+# Exec form guarantees node runs as PID 1 and receives SIGTERM
+CMD [&quot;node&quot;, &quot;dist/server.js&quot;]</code></pre>
+        </div>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">💡 Why Alpine vs Debian-Slim Matters in Production</div>
+          <p>
+            <code>node:20-alpine</code> is only ~50MB because it uses the lightweight <strong>musl libc</strong> standard library. <code>node:20-slim</code> is ~170MB using standard <strong>glibc</strong>. While Alpine is tiny, complex native C++ packages (like <code>sharp</code>, <code>bcrypt</code>, or machine learning libraries) often compile faster and more reliably on <code>debian-slim</code> due to pre-compiled glibc binaries.
+          </p>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Container Networking &amp; Storage Volumes</h2>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Network Mode</th>
+                <th>How It Works</th>
+                <th>Primary Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Bridge</strong> (Default)</td>
+                <td>Creates a private virtual subnet (e.g., <code>172.17.0.0/16</code>) on the host. Containers communicate via private IPs; external traffic requires explicit port publishing (<code>-p 8080:80</code>).</td>
+                <td>Standard multi-service isolation on a single Docker host.</td>
+              </tr>
+              <tr>
+                <td><strong>Host</strong></td>
+                <td>Removes network isolation completely; the container binds directly to the host machine's physical network interfaces.</td>
+                <td>Ultra-high-throughput applications (e.g., video streaming or high-frequency trading) needing zero NAT overhead.</td>
+              </tr>
+              <tr>
+                <td><strong>Overlay</strong></td>
+                <td>Creates an encrypted distributed mesh network spanning multiple physical Docker hosts.</td>
+                <td>Docker Swarm and Kubernetes multi-node clustering.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Storage: Named Volumes vs. Bind Mounts</h3>
+        <ul>
+          <li><strong>Named Volumes (<code>docker volume create</code>):</strong> Managed entirely by Docker inside <code>/var/lib/docker/volumes/</code>. Best for persistent databases (PostgreSQL, MongoDB) because performance is optimized and lifecycle is independent of containers.</li>
+          <li><strong>Bind Mounts:</strong> Directly mounts a physical folder from your host workstation (e.g., <code>./src:/app/src</code>) into the container. Essential for local development live hot-reloading.</li>
+        </ul>
+
+        <!-- Section 6 -->
+        <h2>6. Multi-Container Orchestration: Docker Compose</h2>
+        <p>
+          <strong>Docker Compose</strong> defines multi-container environments declaratively in a <code>docker-compose.yml</code> file:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">YAML: Production-Ready Local Development Stack</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-yaml">version: &#39;3.8&#39;
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - &#39;3000:3000&#39;
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:secret@db:5432/myapp
+      - REDIS_URL=redis://cache:6379
+    volumes:
+      - ./src:/app/src # Bind mount for hot code reload
+    depends_on:
+      db:
+        condition: service_healthy # Waits for PostgreSQL to be ready!
+      cache:
+        condition: service_started
+    networks:
+      - app-network
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: myapp
+    volumes:
+      - pgdata:/var/lib/postgresql/data # Persistent named volume
+    ports:
+      - &#39;5432:5432&#39;
+    healthcheck:
+      test: [&#39;CMD-SHELL&#39;, &#39;pg_isready -U postgres&#39;]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  cache:
+    image: redis:7-alpine
+    ports:
+      - &#39;6379:6379&#39;
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+
+networks:
+  app-network:
+    driver: bridge</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Multi-Stage Dockerfile for React SPA with Nginx</h3>
+        <p>
+          <strong>Scenario:</strong> Write a multi-stage Dockerfile that builds a Vite/React application in Node.js and serves the compiled static files using a high-performance, non-root Alpine Nginx web server.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">Dockerfile Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-dockerfile"># Stage 1: Build the React Application
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Stage 2: Serve with lightweight Nginx
+FROM nginx:alpine
+# Copy compiled static HTML/JS from build stage
+COPY --from=build /app/dist /usr/share/nginx/html
+# Custom nginx config to handle SPA routing (fallback to index.html)
+RUN echo &#39;server { \
+    listen 80; \
+    location / { \
+        root /usr/share/nginx/html; \
+        try_files $uri $uri/ /index.html; \
+    } \
+}&#39; &gt; /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+CMD [&quot;nginx&quot;, &quot;-g&quot;, &quot;daemon off;&quot;]</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: Diagnosing Container Memory Leaks via CLI</h3>
+        <p>
+          <strong>Scenario:</strong> A production Node.js container is restarting intermittently every 20 minutes. Walk through the terminal commands to diagnose if it was killed by the Linux Out-Of-Memory (OOM) killer.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">Bash Diagnostic Commands</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-bash"># 1. Inspect container exit code and OOM status
+docker inspect &lt;container_id&gt; --format=&#39;Status: {{.State.Status}} | ExitCode: {{.State.ExitCode}} | OOMKilled: {{.State.OOMKilled}}&#39;
+# If OOMKilled: true or ExitCode: 137 (128 + 9 SIGKILL), the Linux kernel killed it!
+
+# 2. Check host kernel ring buffer for OOM events
+dmesg -T | grep -i oom
+
+# 3. Stream real-time memory usage before crash
+docker stats &lt;container_id&gt;</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 8: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>8. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering containerization fundamentals, Linux kernel namespaces, Dockerfile optimization, and Compose orchestration.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the core architectural difference between a Container and a Virtual Machine?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Virtual Machine virtualizes physical hardware via a hypervisor and runs an entire independent Guest OS kernel with heavy memory and CPU overhead. A container shares the host Linux kernel directly, using namespaces and cgroups to isolate processes. Containers boot in milliseconds, use a fraction of the RAM, and are significantly more lightweight."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is the difference between a Docker Image and a Docker Container?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Docker Image is an immutable, read-only template built from stacked layers that contains your application code, dependencies, and filesystem. A Docker Container is a live, running instance of an image with a thin, writable container layer attached on top by the Overlay2 storage engine."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What does the .dockerignore file do and why is it important?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`.dockerignore` prevents files and directories (like `node_modules`, `.git`, `.env`, and test logs) from being copied into the Docker build context. This speeds up build times, dramatically reduces image size, and prevents sensitive credentials or incompatible host architecture binaries from being baked into the image."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is the difference between CMD and ENTRYPOINT in a Dockerfile?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`ENTRYPOINT` defines the default executable that always runs when the container starts. `CMD` provides default arguments passed to that entrypoint, which can be easily overridden by arguments passed at the command line when executing `docker run`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">Why should you use the JSON Exec form for CMD instead of the Shell form?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Exec form (`CMD [\"node\", \"server.js\"]`) executes the binary directly as PID 1, allowing it to receive Linux OS signals like `SIGTERM` for graceful shutdowns. The shell form (`CMD node server.js`) spawns an intermediate `/bin/sh -c` wrapper as PID 1, which swallows signals and causes the container to hang until forcibly killed with `SIGKILL`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What are Linux Namespaces and Control Groups (cgroups) and how do they enable containers?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Namespaces provide resource isolation, controlling what a process can see: PID isolates process IDs, NET isolates network interfaces, and MNT isolates the filesystem. Control Groups (cgroups) provide resource metering, controlling how much physical hardware a process can consume: enforcing hard limits on CPU cores, RAM limits, and disk I/O."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">How does Docker Layer Caching work and how do you optimize Dockerfile instruction order?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Each Dockerfile command generates an immutable cached layer. If a layer changes, all subsequent layers are invalidated. We optimize caching by placing infrequently changing steps at the top: we copy `package*.json` and run `npm ci` first, and only copy dynamic application source code (`COPY . .`) afterward, ensuring npm install is cached on code edits."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is a Multi-Stage Build and why is it essential for TypeScript and React applications?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Multi-stage builds use multiple `FROM` instructions in a single Dockerfile. We compile TypeScript or bundle React in a heavy builder stage containing devDependencies, and then copy only the compiled `dist/` artifacts into a clean, unprivileged production runtime image. This slashes image sizes from over 1 GB down to under 90 MB and eliminates build tools from production."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is the difference between Named Volumes and Bind Mounts?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Named Volumes are managed entirely by Docker in host storage (`/var/lib/docker/volumes`), providing high I/O performance and persistence for databases across container recreations. Bind Mounts map a specific host workstation folder directly into the container, making them ideal for local development live hot-reloading."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">Why should you never run production containers as the root user?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "By default, containers execute as UID 0 (root). If an attacker exploits a remote code execution vulnerability or a container escape bug, they have full root privileges on the shared host Linux kernel. Using `USER node` restricts the process to unprivileged rights, limiting blast radius."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">How does service discovery and DNS resolution work inside Docker Compose?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Docker creates an embedded DNS server on user-defined bridge networks. Each container can resolve peer containers by their service name defined in `docker-compose.yml`. For instance, the API service connects to PostgreSQL simply using `postgres://user:pass@db:5432/app` without needing hardcoded IP addresses."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What does Exit Code 137 mean when a Docker container terminates?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Exit code 137 indicates that the container received signal 9 (`128 + 9 = 137`, SIGKILL). In the vast majority of cases, this signifies that the container exceeded its cgroup memory limit and was terminated by the Linux Out-Of-Memory (OOM) killer. You can verify this by checking `docker inspect` for `OOMKilled: true`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is the purpose of the HEALTHCHECK instruction in a Dockerfile?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`HEALTHCHECK` tells Docker how to test whether the application inside the container is actually functioning (e.g., querying `http://localhost:3000/healthz`). If the event loop deadlocks or database connection drops, Docker marks the container as `unhealthy`, enabling orchestrators and Docker Compose to restart it automatically."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the difference between npm install and npm ci in Docker builds?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`npm install` can update `package-lock.json` and install newer non-deterministic minor dependencies. `npm ci` (Clean Install) strictly adheres to `package-lock.json`, deletes existing `node_modules`, fails if the lockfile is out of sync, and installs dependencies significantly faster, making it mandatory for reproducible Docker builds."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">How does the Overlay2 storage driver handle Copy-on-Write (CoW) efficiently?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Overlay2 combines multiple lower read-only directory layers (`lowerdir`) with a single upper writable directory (`upperdir`). When a container reads a file, it reads directly from the lower image layer. If it writes to a file, Overlay2 copies the entire file from the lower layer into `upperdir` first, ensuring base image layers remain completely immutable."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What are the trade-offs between Alpine Linux and Debian Slim for Node.js images?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Alpine uses `musl libc` and yields tiny ~50MB images, but packages with C++ native bindings (like `sharp`, `canvas`, or `grpc`) must compile from source, causing slow build times. Debian Slim uses `glibc` and is slightly larger (~170MB), but benefits from pre-compiled binaries and complete glibc compatibility."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">How do you safely inject secrets into Docker builds without leaking them in image layers?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Never use `ARG` or `ENV` for secrets because they remain visible in image metadata and history (`docker history`). Instead, use Docker BuildKit secret mounts: `RUN --mount=type=secret,id=npmrc ...`. The secret is mounted into a temporary RAM disk during command execution and is never persisted into any image layer."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is Host networking mode and when would you choose it over Bridge mode?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In Host mode (`--network host`), the container shares the host machine's network stack directly with zero network namespace isolation or port mapping. It eliminates Docker NAT packet translation overhead, providing maximum network throughput for high-performance UDP streams or high-frequency trading applications."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is Distroless and what security benefits does it provide?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Google's Distroless images contain only your application runtime (e.g., Node.js and its dependencies) and zero shell binaries (`/bin/sh`, `bash`), package managers (`apt`, `apk`), or core utilities. If an attacker achieves command injection, they cannot spawn a shell, download malware via curl, or inspect files, dramatically reducing the container attack surface."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you explain the value of Docker to a team struggling with 'it works on my machine' bugs?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "'It works on my machine' occurs due to environmental drift—different Node.js patch versions, OS libraries, or missing system tools across developer laptops. Docker packages the exact operating system filesystem, dependencies, configurations, and runtime into an immutable container image, guaranteeing 100% parity from local development to CI and production."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

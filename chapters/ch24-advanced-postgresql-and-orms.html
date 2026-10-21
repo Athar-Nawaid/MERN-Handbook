@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 24: Advanced PostgreSQL and ORM Usage | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to Advanced PostgreSQL and ORM engineering: JSONB operators and GIN indexing, Full-Text Search (FTS), Materialized Views, PgBouncer connection pooling, and Prisma vs Kysely vs Raw SQL.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="24">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART IV — PostgreSQL and SQL</div>
+          <h1 class="chapter-title">Chapter 24: Advanced PostgreSQL and ORM Usage</h1>
+          <p class="chapter-lead">
+            Industrial-grade PostgreSQL capabilities: JSONB semi-structured storage and path GIN indexing, native Full-Text Search (FTS) with language stemming, Materialized Views with concurrent refresh, PgBouncer process pooling architectures, and evaluating Prisma vs Kysely vs raw SQL.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">JSONB & Full-Text Search</span>
+              <span class="meta-pill">PgBouncer & ORMs</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand the architecture of <strong>JSONB</strong>: decomposed binary representation, indexing capabilities, and query operators (<code>-&gt;</code>, <code>-&gt;&gt;</code>, <code>@&gt;</code>, <code>?</code>).</li>
+            <li>Implement native <strong>Full-Text Search (FTS)</strong> using <code>to_tsvector</code>, <code>to_tsquery</code>, and GIN indexes with language stemming and relevance ranking (<code>ts_rank</code>).</li>
+            <li>Precompute heavy analytical aggregations using <strong>Materialized Views</strong> with <code>REFRESH MATERIALIZED VIEW CONCURRENTLY</code>.</li>
+            <li>Architect high-concurrency database connection scaling using <strong>PgBouncer</strong> (Session vs Transaction vs Statement pooling modes).</li>
+            <li>Critically analyze the Node.js database access layer: <strong>Raw SQL</strong> vs <strong>Prisma ORM</strong> vs <strong>Kysely</strong> query builder across latency, type safety, and migration reliability.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. PostgreSQL JSONB: Semi-Structured Data in a Relational World</h2>
+        <p>
+          PostgreSQL offers two native JSON data types: <code>JSON</code> and <code>JSONB</code>.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th><code>JSON</code> (Plain Text)</th>
+                <th><code>JSONB</code> (Decomposed Binary)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Storage Format</strong></td>
+                <td>Stores an exact literal text copy of the input string, including whitespace and duplicate keys.</td>
+                <td>Parses and stores data in a decomposed binary format. Whitespace is stripped, duplicate keys are removed, and object keys are sorted.</td>
+              </tr>
+              <tr>
+                <td><strong>Write Performance</strong></td>
+                <td>Faster insert speed (no binary parsing required).</td>
+                <td>Slightly slower insert speed (due to binary conversion overhead).</td>
+              </tr>
+              <tr>
+                <td><strong>Query Performance</strong></td>
+                <td>Slow: Must re-parse the JSON text string on every query invocation.</td>
+                <td><strong>Blazing Fast:</strong> Directly traverses binary tree structures without string parsing.</td>
+              </tr>
+              <tr>
+                <td><strong>Indexing Support</strong></td>
+                <td>Cannot be indexed directly using GIN.</td>
+                <td><strong>First-class GIN indexing:</strong> Sub-millisecond queries using containment operators (<code>@&gt;</code>).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>1.1 JSONB Query Operators and Indexing</h3>
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (JSONB Querying and GIN Indexing)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- Table with semi-structured attributes
+CREATE TABLE products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title VARCHAR(255) NOT NULL,
+  specs JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+-- Sample insert
+INSERT INTO products (title, specs) VALUES 
+('Pro Laptop', '{"brand": "Apple", "ram_gb": 32, "ports": ["usb-c", "hdmi"], "wireless": {"wifi6": true}}'),
+('Budget Laptop', '{"brand": "Dell", "ram_gb": 8, "ports": ["usb-a", "hdmi"], "wireless": {"wifi6": false}}');
+
+-- 1. Extract as JSON object (->) vs Extract as TEXT (->>)
+SELECT 
+  title,
+  specs->'brand' AS brand_json,         -- Returns '"Apple"' (with quotes, type jsonb)
+  specs->>'brand' AS brand_text,        -- Returns 'Apple' (without quotes, type text)
+  (specs->>'ram_gb')::INT AS ram_gb,    -- Cast text to integer for numeric comparisons
+  specs#>>'{wireless, wifi6}' AS wifi6  -- Path extraction to nested object
+FROM products;
+
+-- 2. Containment Operator (@>)
+-- Find all laptops that have 32GB RAM and Apple brand:
+SELECT * FROM products WHERE specs @> '{"brand": "Apple", "ram_gb": 32}';
+
+-- 3. GIN Indexing on JSONB:
+-- Option A: Default jsonb_ops (Indexes all keys and values)
+CREATE INDEX idx_products_specs_gin ON products USING gin (specs);
+
+-- Option B: jsonb_path_ops (Indexes hashes of paths; 50% smaller, optimized strictly for @>)
+CREATE INDEX idx_products_specs_path ON products USING gin (specs jsonb_path_ops);</code></pre>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Native Full-Text Search (FTS) in PostgreSQL</h2>
+        <p>
+          Before setting up separate external search clusters (like Elasticsearch or Meilisearch), full-stack developers should leverage PostgreSQL's battle-tested <strong>Full-Text Search (FTS)</strong>. It provides stemming, stop-word removal, ranking, and sub-millisecond lookups across millions of articles with zero extra infrastructure cost.
+        </p>
+
+        <h3>2.1 Key FTS Concepts: tsvector, tsquery, and Stemming</h3>
+        <ul>
+          <li><strong><code>to_tsvector('english', text)</code>:</strong> Parses text into sorted, deduplicated lexemes (root word stems). For example, <em>"jumping"</em>, <em>"jumps"</em>, and <em>"jumped"</em> all stem to the lexeme <code>'jump'</code>. Removes stop-words (e.g. <em>"the"</em>, <em>"a"</em>, <em>"is"</em>).</li>
+          <li><strong><code>to_tsquery('english', query)</code>:</strong> Formats search terms with Boolean operators: <code>&amp;</code> (AND), <code>|</code> (OR), <code>!</code> (NOT), <code>&lt;-&gt;</code> (FOLLOWED BY).</li>
+          <li><strong><code>@@</code> Match Operator:</strong> Returns true if a <code>tsvector</code> matches a <code>tsquery</code>.</li>
+        </ul>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (Full-Text Search Pipeline)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- 1. Create articles table with GENERATED ALWAYS search vector
+CREATE TABLE articles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title VARCHAR(255) NOT NULL,
+  body TEXT NOT NULL,
+  -- Stored generated column automatically keeps vector synchronized!
+  search_vector TSVECTOR GENERATED ALWAYS AS (
+    setweight(to_tsvector('english', title), 'A') || ' ' || -- Title matches have weight 'A' (highest)
+    setweight(to_tsvector('english', body), 'B')            -- Body matches have weight 'B'
+  ) STORED
+);
+
+-- 2. GIN Index on the search vector
+CREATE INDEX idx_articles_search ON articles USING gin (search_vector);
+
+-- 3. Execute Search with Relevance Ranking (ts_rank)
+SELECT 
+  id,
+  title,
+  ts_rank(search_vector, websearch_to_tsquery('english', 'react performance')) AS rank
+FROM articles
+WHERE search_vector @@ websearch_to_tsquery('english', 'react performance')
+ORDER BY rank DESC
+LIMIT 10;</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Materialized Views: Caching Heavy Analytics</h2>
+        <p>
+          A standard SQL <code>VIEW</code> is merely a saved query. When you query a view, PostgreSQL executes the underlying query from scratch every single time.
+        </p>
+        <p>
+          A <strong>Materialized View</strong> computes the query results and <strong>persists the output rows physically to disk</strong> like a real table. You can even build B-Tree indexes directly on the materialized view!
+        </p>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (Materialized View with Concurrent Refresh)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- 1. Create Materialized View computing daily sales aggregation across millions of rows
+CREATE MATERIALIZED VIEW mv_daily_sales_summary AS
+SELECT 
+  sale_date::DATE AS day,
+  product_id,
+  COUNT(id) AS total_orders,
+  SUM(amount) AS total_revenue
+FROM sales
+GROUP BY sale_date::DATE, product_id;
+
+-- 2. CRITICAL: Unique index is mandatory for CONCURRENT refresh!
+CREATE UNIQUE INDEX uq_mv_daily_sales ON mv_daily_sales_summary (day, product_id);
+
+-- 3. Refreshing the Materialized View:
+-- Non-concurrent (Blocks all reads while computing! Avoid in production!):
+-- REFRESH MATERIALIZED VIEW mv_daily_sales_summary;
+
+-- Concurrent Refresh (Does NOT block reads! Runs in background via diffing!):
+REFRESH MATERIALIZED VIEW CONCURRENTLY mv_daily_sales_summary;</code></pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. High-Scale Connection Pooling with PgBouncer</h2>
+        <p>
+          A frequent cause of production outages in Node.js architectures is database connection exhaustion.
+        </p>
+        <p>
+          PostgreSQL employs a <strong>process-per-connection architecture</strong>. Every client connection spawns a separate dedicated operating system process (forked <code>postgres</code> process) consuming roughly <strong>10MB of RAM</strong>. If you run 20 Node.js server pods, each with a connection pool size of 50, you create 1,000 active connections—consuming 10GB of RAM just for connection overhead and overwhelming CPU context switching!
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 24.1: Direct Node.js Connections vs PgBouncer Proxy Architecture</div>
+          <pre class="diagram-content">
+[ Without PgBouncer: Connection Exhaustion &amp; Crash ]
+20 Node.js Pods (Pool: 50 each) ===( 1,000 Direct TCP Connections )===> PostgreSQL Server
+(Result: CPU thrashing, high memory overhead, connection timeouts!)
+
+========================================================================
+
+[ With PgBouncer: High-Throughput Microsecond Connection Proxy ]
+20 Node.js Pods ===( 1,000 Lightweight Sockets )===> [ PgBouncer Proxy ]
+                                                             |
+                                       ( Multiplexed into 30 Real Connections! )
+                                                             v
+                                                     [ PostgreSQL Server ]
+          </pre>
+        </div>
+
+        <h3>4.1 PgBouncer Pooling Modes</h3>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Pooling Mode</th>
+                <th>When Connection is Assigned to Client</th>
+                <th>When Connection is Returned to Pool</th>
+                <th>Caveats &amp; Prepared Statements</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Session Pooling</strong></td>
+                <td>When client connects.</td>
+                <td>When client explicitly disconnects.</td>
+                <td>Heavyweight; minimal efficiency gain over standard application pools.</td>
+              </tr>
+              <tr>
+                <td><strong>Transaction Pooling</strong> (Standard Production)</td>
+                <td>When a transaction begins (<code>BEGIN</code>).</td>
+                <td>When the transaction commits or aborts (<code>COMMIT</code> / <code>ROLLBACK</code>).</td>
+                <td><strong>Optimal balance!</strong> Allows thousands of clients to share 20–50 PostgreSQL connections. <em>Caveat:</em> Session-level state (like named prepared statements or <code>SET search_path</code>) cannot be used safely across queries outside transactions.</td>
+              </tr>
+              <tr>
+                <td><strong>Statement Pooling</strong></td>
+                <td>When an individual SQL statement begins.</td>
+                <td>When that single statement completes.</td>
+                <td>Multi-statement transactions (<code>BEGIN ... COMMIT</code>) are <strong>forbidden</strong>! Only suitable for simple single-statement analytics.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. The Node.js Database Access Layer: Raw SQL vs Prisma vs Kysely</h2>
+        <p>
+          Choosing an access layer is a major architectural commitment in full-stack engineering.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Technology</th>
+                <th>Pros</th>
+                <th>Cons</th>
+                <th>Best Architectural Fit</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Raw SQL (node-postgres / <code>pg</code>)</strong></td>
+                <td>Zero abstraction overhead; maximum query performance; full access to 100% of PostgreSQL features (FTS, CTEs, window functions, RLS).</td>
+                <td>No compile-time type safety; manual SQL string concatenation risks injection bugs if parameterized queries are forgotten.</td>
+                <td>High-throughput microservices, complex reporting, performance-critical pipelines.</td>
+              </tr>
+              <tr>
+                <td><strong>Prisma ORM</strong></td>
+                <td>Outstanding developer experience (DX); automatic TypeScript type generation from schema; intuitive relation loading.</td>
+                <td>Heavy Rust query-engine binary overhead; hides underlying SQL execution plans; prone to sub-optimal generated queries and N+1 traps in complex joins.</td>
+                <td>Rapid prototyping, early-stage startups, standard CRUD applications.</td>
+              </tr>
+              <tr>
+                <td><strong>Kysely</strong> (Type-Safe Query Builder)</td>
+                <td>Zero runtime overhead (tiny pure JS library); compile-time type safety for plain SQL; outputs transparent SQL directly matching developer intent; no binary engine.</td>
+                <td>Requires manual migration schema typing or schema generators (e.g. <code>kysely-codegen</code>).</td>
+                <td><strong>Modern Production Standard:</strong> Clean architecture combining SQL transparency with full TypeScript safety.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Type-Safe Query Building with Kysely)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// src/db/queries.js
+import { Kysely, PostgresDialect } from "kysely";
+import pg from "pg";
+
+// 1. Initialize Kysely with PostgreSQL Pool
+export const db = new Kysely({
+  dialect: new PostgresDialect({
+    pool: new pg.Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 20
+    })
+  })
+});
+
+// 2. Fully type-safe query with zero runtime ORM overhead!
+export async function getTopSpendingCustomers(minTotalSpent = 1000) {
+  return await db
+    .selectFrom("customers")
+    .innerJoin("orders", "orders.customer_id", "customers.id")
+    .select([
+      "customers.id",
+      "customers.name",
+      "customers.email",
+      (eb) => eb.fn.sum("orders.total_amount").as("total_spent"),
+      (eb) => eb.fn.count("orders.id").as("order_count")
+    ])
+    .where("orders.status", "=", "COMPLETED")
+    .groupBy(["customers.id", "customers.name", "customers.email"])
+    .having((eb) => eb.fn.sum("orders.total_amount"), ">", minTotalSpent)
+    .orderBy("total_spent", "desc")
+    .limit(10)
+    .execute();
+}</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-tag">Exercise 24.1</span>
+            <span class="exercise-title">Build a Sub-Millisecond Product Catalog Search with JSONB Filtering and FTS</span>
+          </div>
+          <p>
+            <strong>Problem:</strong> Create a PostgreSQL table for products that supports both full-text search across titles and descriptions and structured JSONB attribute filtering (e.g. <code>color = 'red'</code>). Write the DDL, GIN indexes, and an optimal search query.
+          </p>
+          <details class="solution-details">
+            <summary class="solution-toggle">View Complete Solution</summary>
+            <div class="solution-body">
+              <div class="code-block" data-lang="sql">
+                <div class="code-header">
+                  <span class="code-lang">sql</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-sql">-- 1. Table with JSONB attributes and generated TSVECTOR
+CREATE TABLE catalog_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+  attributes JSONB NOT NULL DEFAULT '{}'::jsonb,
+  search_tsv TSVECTOR GENERATED ALWAYS AS (
+    to_tsvector('english', name || ' ' || description)
+  ) STORED
+);
+
+-- 2. Indexes: GIN on Full-Text Search and GIN on JSONB attributes
+CREATE INDEX idx_catalog_fts ON catalog_items USING gin (search_tsv);
+CREATE INDEX idx_catalog_attrs ON catalog_items USING gin (attributes jsonb_path_ops);
+
+-- 3. High-Performance Hybrid Query: Full-Text Search + Attribute Filter
+-- Searches for "waterproof jacket" where attributes contain {"color": "black", "size": "L"}
+SELECT 
+  id, 
+  name, 
+  attributes,
+  ts_rank(search_tsv, websearch_to_tsquery('english', 'waterproof jacket')) AS relevance
+FROM catalog_items
+WHERE search_tsv @@ websearch_to_tsquery('english', 'waterproof jacket')
+  AND attributes @> '{"color": "black", "size": "L"}'::jsonb
+ORDER BY relevance DESC
+LIMIT 20;</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 7: Interview Questions -->
+        <section class="qa-section" id="interview-questions">
+          <h2>7. Chapter-Specific Interview Questions and Answers</h2>
+          <p>
+            Master these 20 high-frequency interview questions covering JSONB, Full-Text Search, Materialized Views, PgBouncer, and modern ORM design.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the difference between JSON and JSONB in PostgreSQL?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`JSON` stores an exact literal copy of the text string, preserving whitespace and duplicate keys. It does not parse the data on insert, but requires re-parsing on every single query, making reads slow and preventing GIN indexing. `JSONB` parses the JSON on insert into a decomposed binary format, stripping whitespace and sorting keys. While slightly slower to insert, `JSONB` supports lightning-fast binary queries and first-class GIN indexing via containment operators (`@>`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is the difference between the -> and ->> operators when querying JSONB?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`->` extracts a JSON object field or array element as a **JSONB object** (preserving quotes: `\"Alice\"`), allowing further chained JSON operations. `->>` extracts the field as **plain SQL TEXT** (unquoted: `'Alice'`). You use `->` to traverse deeper into nested objects and `->>` when you want the final string value for comparison, casting, or displaying in the client."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is the difference between jsonb_ops and jsonb_path_ops when creating a GIN index on JSONB?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The default `jsonb_ops` creates separate index entries for every key, value, and array element, supporting key-exists operators (`?`, `?|`) and containment (`@>`). `jsonb_path_ops` creates hash entries for full key-value paths (e.g. `hash('address' -> 'city' -> 'Boston')`). `jsonb_path_ops` indexes are typically 50% smaller and faster, but they ONLY support the containment operator (`@>`). If you only use `@>`, choose `jsonb_path_ops`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">How does Full-Text Search work in PostgreSQL, and what are tsvector and tsquery?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "PostgreSQL FTS breaks text into language-specific root word stems (lexemes) and discards stop-words. `to_tsvector()` parses a document into a sorted list of lexemes with their word positions. `to_tsquery()` parses search queries with boolean operators (`&`, `|`, `!`). The match operator `@@` checks if a document vector matches the query. When paired with a GIN index on the `tsvector` column, search runs in sub-millisecond time."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is a Materialized View, and how does it differ from a standard SQL View?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A standard SQL View is a saved query definition; querying a view executes the underlying SQL from scratch every time. A Materialized View executes the query once and physically persists the resulting table rows to disk. It acts like a cached physical table that can have its own indexes, providing instant reads for complex aggregations. It must be refreshed periodically via `REFRESH MATERIALIZED VIEW`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">How does REFRESH MATERIALIZED VIEW CONCURRENTLY work, and what is required to use it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A standard refresh locks the view against reads with an `ACCESS EXCLUSIVE` lock while recalculating. `REFRESH MATERIALIZED VIEW CONCURRENTLY` computes the new data in a temporary structure, performs a diff against existing rows, and applies updates without blocking active read queries. To use `CONCURRENTLY`, the materialized view MUST have at least one `UNIQUE` index on a column or set of columns with no NULLs."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">Why does PostgreSQL need PgBouncer, and why can't a Node.js app just open 1,000 database connections?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "PostgreSQL uses a process-per-connection architecture where every connection forks a dedicated OS process consuming ~10MB of RAM. Opening 1,000 connections consumes 10GB of RAM and causes CPU context-switching saturation. PgBouncer is a lightweight connection proxy that sits between Node.js and PostgreSQL. It allows thousands of application clients to connect over cheap sockets, multiplexing them into a small, fixed pool of 20–50 real PostgreSQL server processes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is Transaction Pooling mode in PgBouncer, and what is its primary limitation?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In Transaction Pooling, PgBouncer assigns a real server connection to a client only for the duration of a single transaction (`BEGIN` to `COMMIT`), returning it to the pool immediately after. Its primary limitation is that session-scoped features—such as named prepared statements, temporary tables, `LISTEN/NOTIFY`, and session variables (`SET search_path`)—are lost or cause contamination because subsequent queries may run on different underlying connections."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">Compare Prisma vs Kysely vs Raw SQL for Node.js backend development.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Prisma offers the best developer experience and auto-generated TypeScript types, but relies on a heavy Rust engine binary, hides generated SQL, and can produce inefficient queries for complex joins. Raw SQL (`pg`) provides maximum performance and full feature access, but lacks compile-time type safety. Kysely represents the sweet spot: it is a pure JavaScript, type-safe query builder that compiles directly to transparent SQL with zero runtime overhead, combining full TypeScript safety with SQL control."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">How do you implement fuzzy or typo-tolerant search in PostgreSQL?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I use the `pg_trgm` extension (trigram matching). It breaks strings into three-letter chunks and provides the similarity operator `%` and similarity function `similarity(a, b)`. Paired with a GIN trigram index (`USING gin (title gin_trgm_ops)`), PostgreSQL can find close spelling matches (e.g. searching 'javascrpt' finds 'javascript') in sub-millisecond time."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the difference between websearch_to_tsquery and plainto_tsquery?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`plainto_tsquery` converts plain text into a sequence of AND-joined lexemes, ignoring punctuation and quotes. `websearch_to_tsquery` understands modern web search syntax: it parses unquoted words as AND, quoted phrases (`\"exact match\"`) as ordered proximity checks, and the minus operator (`-word`) as NOT (`!`), preventing syntax errors from raw user input."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">How can you update a specific key inside a nested JSONB object without replacing the entire column?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Use the `jsonb_set()` function or the concatenation operator `||`. For top-level keys, `UPDATE users SET metadata = metadata || '{\"theme\": \"dark\"}'::jsonb`. For nested paths, `UPDATE users SET metadata = jsonb_set(metadata, '{preferences, notifications, email}', 'true'::jsonb)`. This updates only the target key while preserving all other keys."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: Your analytics dashboard executes a slow query taking 15 seconds that aggregates 10 million transactions. How do you serve this data to users in under 10ms?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I would create a Materialized View with a unique index on the dimension keys. The web dashboard queries the materialized view directly, which answers in &lt; 5ms because all sums and counts are already precomputed. I would schedule a background cron job (or BullMQ worker) to run `REFRESH MATERIALIZED VIEW CONCURRENTLY` every 15 minutes, refreshing data in the background without locking user reads."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the LISTEN / NOTIFY mechanism in PostgreSQL, and how does it compare to Redis Pub/Sub?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`LISTEN/NOTIFY` is a native publish-subscribe mechanism in PostgreSQL. An asynchronous notification sent via `NOTIFY channel, 'payload'` is delivered to all connected clients listening on that channel when the publishing transaction commits. Its primary advantage over Redis is transactional atomicity: notifications are dispatched ONLY if the database transaction commits successfully. If the transaction rolls back, no notification is sent."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">Why should you avoid storing large binary files (images/PDFs) in PostgreSQL BYTEA columns?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Storing large binary files in `BYTEA` bloats the database table and backup dumps, consumes expensive database RAM in Shared Buffers, and saturates database connection bandwidth. Databases are optimized for relational querying, not file streaming. The industry standard is to store files in Cloud Object Storage (like AWS S3) and store only the resulting file URL string or S3 key in the PostgreSQL table."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How do you configure Prisma to work with PgBouncer in transaction pooling mode without breaking migrations?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Prisma requires two connection strings in `schema.prisma`: `DATABASE_URL` pointing to PgBouncer port 6543 with `?pgbouncer=true` (which disables prepared statements for queries), and `DIRECT_URL` pointing directly to PostgreSQL port 5432. The `directUrl` is used exclusively by Prisma CLI migrations, which require advisory locks and session features that PgBouncer transaction pooling blocks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is setweight in PostgreSQL Full-Text Search, and why is it used?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`setweight()` assigns priority weights ('A', 'B', 'C', 'D') to lexemes in a `tsvector`. Typically, words in an article's title are weighted as 'A' (highest), while words in the body text are weighted as 'B' or 'C'. When calculating search relevance using `ts_rank()`, title matches receive significantly higher scores than body matches, ensuring relevant items appear at the top."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">Scenario: An application query filtering on a JSONB column specs @> '{"color": "red"}' takes 2 seconds on 5 million rows. How do you make it run in 2ms?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The query is performing a sequential scan across 5 million rows. To fix it, create a specialized GIN index using `jsonb_path_ops`: `CREATE INDEX idx_products_specs_path ON products USING gin (specs jsonb_path_ops);`. This builds an inverted index hashing JSON key-value paths directly. The query planner will switch to a Bitmap Index Scan, reducing execution time from 2 seconds to under 2 milliseconds."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is the difference between Statement Pooling and Transaction Pooling in PgBouncer?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In Transaction Pooling, a server connection is held for the entire lifecycle of a multi-statement transaction (`BEGIN` to `COMMIT`). In Statement Pooling, the connection is returned to the pool after every single individual SQL statement. Statement pooling completely forbids multi-statement transactions; if a client attempts `BEGIN; INSERT; COMMIT;`, the statements may execute on three different server backends, breaking atomicity."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">What are the advantages of using Kysely over traditional ORMs in a clean architecture backend?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Kysely enforces strict compile-time TypeScript type checking for tables, columns, joins, and aggregates while compiling directly to clean, standard SQL. Unlike ORMs, it has zero hidden runtime magic, no memory-heavy entity tracking, no N+1 query surprises, and no binary dependencies. It allows software architects to write expressive, optimized SQL with full compiler safety and transparent performance."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

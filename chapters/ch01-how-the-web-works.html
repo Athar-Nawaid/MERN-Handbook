@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 1: How the Web Works | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to Web Architecture, DNS resolution, TCP/UDP, TLS handshakes, HTTP request-response lifecycles, and browser rendering internals for full-stack developers.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="1">
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <!-- Sidebar -->
+    <aside id="book-sidebar" class="sidebar">
+      <!-- Injected by assets/js/chapter.js -->
+    </aside>
+
+    <!-- Main Content -->
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <!-- Chapter Header -->
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART I — Programming Foundations and JavaScript</div>
+          <h1 class="chapter-title">Chapter 1: How the Web Works</h1>
+          <p class="chapter-lead">
+            Understanding the modern web from the physical network wire to the browser pixels: DNS resolution, TCP three-way handshakes, TLS encryption, HTTP/1.1 vs HTTP/2 vs HTTP/3, the browser rendering pipeline, and the end-to-end frontend-backend-database lifecycle.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Core Architecture</span>
+              <span class="meta-pill">16 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <!-- Chapter Learning Objectives -->
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Trace the step-by-step lifecycle of what happens when a user types a URL into a browser address bar.</li>
+            <li>Master the recursive and iterative DNS resolution flow from browser cache to root nameservers.</li>
+            <li>Understand why TCP guarantees reliability over UDP and how the 3-way handshake establishes state.</li>
+            <li>Compare TLS 1.2 vs TLS 1.3 handshake latency, cryptographic security, and key exchange mechanics.</li>
+            <li>Analyze HTTP request/response structures, methods, idempotency, status codes, and header behaviors.</li>
+            <li>Understand the Browser Critical Rendering Path: DOM, CSSOM, Render Tree, Layout, Paint, and Compositing.</li>
+            <li>Confidently answer senior architectural interview questions regarding latency bottlenecks and network debugging.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Client-Server Architecture</h2>
+        <p>
+          At its foundational level, the internet is built on the <strong>Client-Server model</strong>. In this distributed computing paradigm, workloads are partitioned between resource and service providers (<strong>servers</strong>) and service requesters (<strong>clients</strong>).
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++--------------------+            HTTP/HTTPS Request           +--------------------+
+|                    | -------------------------------------> |                    |
+|   Client Browser   |                                        |  Node.js / Express |
+|  (React Frontend)  | <------------------------------------- |    App Server      |
+|                    |            HTTP/HTTPS Response          |                    |
++--------------------+                                        +--------------------+
+                                                                        |          ^
+                                                        Database Query  |          | Result Set
+                                                        (SQL / Mongoose)|          |
+                                                                        v          |
+                                                              +--------------------+
+                                                              |    PostgreSQL /    |
+                                                              |   MongoDB Server   |
+                                                              +--------------------+
+          </div>
+          <div class="diagram-caption">Figure 1.1: The Three-Tier Full-Stack Web Request-Response Architecture</div>
+        </div>
+
+        <h3>Why the Architecture Exists</h3>
+        <p>
+          Separating clients and servers provides essential system properties:
+        </p>
+        <ul>
+          <li><strong>Centralized Data Integrity & Security:</strong> Business rules, authentication, credit card processing, and authoritative database records remain isolated in secure server environments, completely shielded from client manipulation.</li>
+          <li><strong>Independent Scalability:</strong> Frontends can be statically deployed and cached across worldwide Content Delivery Networks (CDNs), while backend Node.js services scale horizontally behind load balancers based on CPU/memory pressure.</li>
+          <li><strong>Heterogeneous Clients:</strong> A single Express REST or GraphQL API can simultaneously serve desktop web browsers, iOS apps, Android clients, and automated third-party webhooks.</li>
+        </ul>
+
+        <div class="callout callout-note">
+          <div class="callout-title">Real-World Analogy: The Restaurant Model</div>
+          <p>
+            Think of the client as a customer sitting at a dining table holding a menu. The customer cannot walk directly into the pantry to cook food or check cash register balances (security violation). Instead, they give an order to the waiter (the HTTP Request). The waiter delivers the order to the kitchen (the Express backend server). The chef gathers raw ingredients from the walk-in refrigerator (the PostgreSQL/MongoDB database), prepares the meal, and the waiter delivers the finished dish back to the customer's table (the HTTP Response).
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <h2>2. Browsers, Servers, DNS, IP Addresses, and Ports</h2>
+        <p>
+          To deliver any packet across the globe, the internet relies on the <strong>Internet Protocol (IP)</strong>. Every physical or virtual host on a network is assigned an <strong>IP Address</strong>.
+        </p>
+
+        <h3>IPv4 vs IPv6</h3>
+        <ul>
+          <li><strong>IPv4 (Internet Protocol version 4):</strong> 32-bit numerical address expressed as four 8-bit octets separated by dots (e.g., <code>192.168.1.1</code> or <code>142.250.190.46</code>). IPv4 yields \(2^{32} \approx 4.29 \text{ billion}\) addresses, which has been exhausted globally.</li>
+          <li><strong>IPv6 (Internet Protocol version 6):</strong> 128-bit hexadecimal address separated by colons (e.g., <code>2001:0db8:85a3:0000:0000:8a2e:0370:7334</code>). IPv6 yields \(2^{128} \approx 3.4 \times 10^{38}\) unique addresses, effectively infinite for human networking needs.</li>
+        </ul>
+
+        <h3>The Domain Name System (DNS)</h3>
+        <p>
+          Humans remember domain names like <code>api.github.com</code> or <code>mycompany.com</code>, but routers and network switches only route IP packets. DNS is the global, distributed, hierarchical database that translates human-friendly domain names into machine-routable IP addresses.
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+User types: "https://api.example.com"
+       |
+       v
+1. Check Browser Cache ----(Hit?)----> Return IP (Done!)
+       | (Miss)
+       v
+2. Check OS Cache / Hosts File ----(Hit?)----> Return IP (Done!)
+       | (Miss)
+       v
+3. Query Local Resolver (ISP / 8.8.8.8) ----(Hit?)----> Return IP (Done!)
+       | (Miss - Recursive Query Initiated)
+       +---> 4. Root Nameserver (".") -------------> Returns TLD server (.com)
+       +---> 5. Top-Level Domain Nameserver (".com") -> Returns Authoritative server
+       +---> 6. Authoritative Nameserver (example.com)-> Returns IP (e.g. 93.184.216.34)
+       |
+       v
+Local Resolver caches IP based on TTL (Time-To-Live) and returns to Browser
+          </div>
+          <div class="diagram-caption">Figure 1.2: Recursive vs. Iterative DNS Resolution Flow</div>
+        </div>
+
+        <h3>Ports: Multiplexing Services on a Single Host</h3>
+        <p>
+          While an IP address identifies the <em>host computer</em> on the network, a <strong>Port Number</strong> (a 16-bit integer ranging from 0 to 65535) identifies the <em>specific software process</em> running on that host that should receive the packets.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Port Number</th>
+                <th>Protocol</th>
+                <th>Standard Purpose in Web Development</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>80</code></td>
+                <td>HTTP</td>
+                <td>Standard unencrypted web server traffic</td>
+              </tr>
+              <tr>
+                <td><code>443</code></td>
+                <td>HTTPS</td>
+                <td>Encrypted TLS/SSL web traffic</td>
+              </tr>
+              <tr>
+                <td><code>22</code></td>
+                <td>SSH</td>
+                <td>Secure Shell remote terminal access to Linux servers</td>
+              </tr>
+              <tr>
+                <td><code>53</code></td>
+                <td>DNS</td>
+                <td>Domain Name System queries (primarily UDP)</td>
+              </tr>
+              <tr>
+                <td><code>3000 / 5000 / 8080</code></td>
+                <td>Custom TCP</td>
+                <td>Standard development ports for Express / Node.js servers</td>
+              </tr>
+              <tr>
+                <td><code>5432</code></td>
+                <td>PostgreSQL</td>
+                <td>PostgreSQL database server listener</td>
+              </tr>
+              <tr>
+                <td><code>27017</code></td>
+                <td>MongoDB</td>
+                <td>MongoDB standalone or replica set listener</td>
+              </tr>
+              <tr>
+                <td><code>6379</code></td>
+                <td>Redis</td>
+                <td>Redis in-memory caching and message broker instance</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <h2>3. Transport Protocols: TCP versus UDP</h2>
+        <p>
+          At the Transport Layer (Layer 4 of the OSI model), all web communication relies on either <strong>TCP (Transmission Control Protocol)</strong> or <strong>UDP (User Datagram Protocol)</strong>.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>TCP (Transmission Control Protocol)</th>
+                <th>UDP (User Datagram Protocol)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Connection State</strong></td>
+                <td>Connection-oriented (Requires 3-way handshake before data transfer)</td>
+                <td>Connectionless (Fire-and-forget datagrams, no handshake)</td>
+              </tr>
+              <tr>
+                <td><strong>Delivery Guarantee</strong></td>
+                <td>Guaranteed. Lost packets are automatically retransmitted.</td>
+                <td>No guarantee. Lost packets are discarded silently.</td>
+              </tr>
+              <tr>
+                <td><strong>Packet Ordering</strong></td>
+                <td>Strictly ordered via Sequence Numbers (\(SEQ\)) and Acknowledgment Numbers (\(ACK\)).</td>
+                <td>Packets may arrive out of order or not at all.</td>
+              </tr>
+              <tr>
+                <td><strong>Flow & Congestion Control</strong></td>
+                <td>Built-in sliding window flow control and congestion avoidance algorithms (Cubic, BBR).</td>
+                <td>None. Transmits at whatever speed the host supplies.</td>
+              </tr>
+              <tr>
+                <td><strong>Header Overhead</strong></td>
+                <td>20 to 60 bytes.</td>
+                <td>Fixed 8 bytes.</td>
+              </tr>
+              <tr>
+                <td><strong>Primary Use Cases</strong></td>
+                <td>Web browsing (HTTP/1.1, HTTP/2), REST APIs, file downloads, SSH, database connections.</td>
+                <td>DNS lookups, live video streaming, multiplayer gaming, WebRTC audio/video, HTTP/3 (QUIC).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>The TCP Three-Way Handshake</h3>
+        <p>
+          Before any HTTP request can be sent over TCP, the client and server must agree on initial sequence numbers to track data bytes accurately:
+        </p>
+        <ol>
+          <li><strong>SYN (Synchronize):</strong> The client picks a random Initial Sequence Number \(ISN_C\) (e.g., 1000) and sends a TCP packet with the <code>SYN</code> flag set to the server.</li>
+          <li><strong>SYN-ACK (Synchronize-Acknowledge):</strong> The server receives the <code>SYN</code>, records \(ISN_C\), picks its own random Initial Sequence Number \(ISN_S\) (e.g., 5000), and sends back a packet with both <code>SYN</code> and <code>ACK</code> flags set. The acknowledgment number is \(ACK = ISN_C + 1 = 1001\).</li>
+          <li><strong>ACK (Acknowledge):</strong> The client receives the <code>SYN-ACK</code> and responds with an <code>ACK</code> packet containing \(ACK = ISN_S + 1 = 5001\). At this point, the TCP socket is in the <code>ESTABLISHED</code> state, and data payload transmission begins.</li>
+        </ol>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">💡 Latency Impact (Round Trip Time)</div>
+          <p>
+            The TCP handshake requires <strong>1 full Round Trip Time (1 RTT)</strong> before a single byte of HTTP application data can travel across the wire. If your client is in London and your server is in California with a ping latency of 150ms, the TCP handshake alone consumes 150ms of dead waiting time!
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <h2>4. TLS / HTTPS and Cryptographic Handshakes</h2>
+        <p>
+          Standard HTTP transmits data in cleartext. Anyone eavesdropping on the physical wire, Wi-Fi router, or ISP transit backbone can read passwords, session cookies, and private user data. <strong>HTTPS (Hypertext Transfer Protocol Secure)</strong> runs HTTP on top of a <strong>TLS (Transport Layer Security)</strong> encrypted tunnel.
+        </p>
+
+        <h3>Core Objectives of TLS</h3>
+        <ul>
+          <li><strong>Confidentiality (Encryption):</strong> Only the client and server can read the transmitted message payload.</li>
+          <li><strong>Integrity:</strong> Messages cannot be altered, dropped, or tampered with in transit without detection (via Message Authentication Codes).</li>
+          <li><strong>Authentication:</strong> Proves that the server actually owns the domain name using cryptographically signed digital certificates from trusted Certificate Authorities (CAs).</li>
+        </ul>
+
+        <h3>TLS 1.2 vs TLS 1.3: The Latency Revolution</h3>
+        <p>
+          In <strong>TLS 1.2</strong>, negotiating cipher suites and exchanging asymmetric public keys required <strong>2 RTTs</strong> (added to the 1 RTT for TCP, totaling 3 RTTs before HTTP data could flow).
+        </p>
+        <p>
+          In modern <strong>TLS 1.3</strong>, the handshake was streamlined down to <strong>1 RTT</strong> using Diffie-Hellman key exchange. Furthermore, with <strong>0-RTT Session Resumption</strong>, returning visitors can begin sending encrypted application data on the very first round trip!
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+Client                                                               Server
+  |                                                                    |
+  | -------- TCP SYN (Round Trip 1 Start) ---------------------------> |
+  | <------- TCP SYN-ACK --------------------------------------------- |
+  | -------- TCP ACK + TLS 1.3 ClientHello (Cipher Proposals + Key) -> |
+  | <------- TLS 1.3 ServerHello + Certificate + Server Key ---------- |
+  |                                                                    |
+  | ================= [SECURE SYMMETRIC ENCRYPTION ESTABLISHED] ===== |
+  |                                                                    |
+  | -------- HTTP GET /api/v1/users (Encrypted) ---------------------> |
+  | <------- HTTP 200 OK (Encrypted JSON Payload) -------------------- |
+          </div>
+          <div class="diagram-caption">Figure 1.3: Combined TCP + TLS 1.3 Handshake into Encrypted HTTP Data Flow</div>
+        </div>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <h2>5. The HTTP Protocol: Methods, Status Codes, and Headers</h2>
+        <p>
+          HTTP is an application-layer, stateless, request-response protocol. A client transmits an <strong>HTTP Request</strong>, and the server returns an <strong>HTTP Response</strong>.
+        </p>
+
+        <h3>Anatomy of an HTTP Request</h3>
+        <pre><code class="language-http">POST /api/v1/tasks HTTP/1.1
+Host: api.example.com
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+Content-Length: 53
+Accept: application/json
+
+{
+  "title": "Study Event Loop",
+  "priority": "high"
+}</code></pre>
+
+        <h3>Anatomy of an HTTP Response</h3>
+        <pre><code class="language-http">HTTP/1.1 201 Created
+Date: Wed, 21 Oct 2026 07:45:00 GMT
+Content-Type: application/json; charset=utf-8
+Content-Length: 95
+Connection: keep-alive
+X-Request-Id: a3f8-92c1-41ee-bb84
+Set-Cookie: session_id=abc123xyz; Path=/; HttpOnly; Secure; SameSite=Strict
+
+{
+  "id": "task_987",
+  "title": "Study Event Loop",
+  "priority": "high",
+  "completed": false
+}</code></pre>
+
+        <h3>HTTP Methods and Idempotency</h3>
+        <p>
+          An operation is <strong>Idempotent</strong> if making the exact same request \(N\) times produces the exact same server state as making it once (\(f(f(x)) = f(x)\)).
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>HTTP Method</th>
+                <th>Standard Semantic Purpose</th>
+                <th>Safe?</th>
+                <th>Idempotent?</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>GET</code></td>
+                <td>Retrieve a resource without modifying server state.</td>
+                <td>Yes</td>
+                <td>Yes</td>
+              </tr>
+              <tr>
+                <td><code>POST</code></td>
+                <td>Create a new subordinate resource or trigger an arbitrary action.</td>
+                <td>No</td>
+                <td><strong>No</strong> (Sending 5 POSTs creates 5 separate database records).</td>
+              </tr>
+              <tr>
+                <td><code>PUT</code></td>
+                <td>Completely replace an existing resource with the provided payload.</td>
+                <td>No</td>
+                <td><strong>Yes</strong> (Replacing a record with identical values 5 times yields the same final state).</td>
+              </tr>
+              <tr>
+                <td><code>PATCH</code></td>
+                <td>Apply partial modifications to an existing resource.</td>
+                <td>No</td>
+                <td>Generally <strong>No</strong> (though carefully designed patches can be made idempotent).</td>
+              </tr>
+              <tr>
+                <td><code>DELETE</code></td>
+                <td>Remove the specified resource.</td>
+                <td>No</td>
+                <td><strong>Yes</strong> (Deleting ID 42 once deletes it; deleting it again leaves it deleted).</td>
+              </tr>
+              <tr>
+                <td><code>HEAD</code></td>
+                <td>Same as GET, but returns only response headers without the message body.</td>
+                <td>Yes</td>
+                <td>Yes</td>
+              </tr>
+              <tr>
+                <td><code>OPTIONS</code></td>
+                <td>Used by browsers in CORS preflight requests to query supported methods/headers.</td>
+                <td>Yes</td>
+                <td>Yes</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>HTTP Status Code Classifications</h3>
+        <ul>
+          <li><strong>1xx (Informational):</strong> Request received, continuing process (e.g., <code>101 Switching Protocols</code> for WebSockets).</li>
+          <li><strong>2xx (Success):</strong> Action successfully received and accepted:
+            <ul>
+              <li><code>200 OK</code>: Standard successful GET, PUT, or PATCH.</li>
+              <li><code>201 Created</code>: Successfully created a new resource (standard for POST).</li>
+              <li><code>204 No Content</code>: Action succeeded, but response intentionally has no body (often for DELETE).</li>
+            </ul>
+          </li>
+          <li><strong>3xx (Redirection):</strong> Further action needed to complete request:
+            <ul>
+              <li><code>301 Moved Permanently</code>: Resource permanently at new URI (browsers cache this aggressively).</li>
+              <li><code>302 Found / 307 Temporary Redirect</code>: Temporary redirect.</li>
+              <li><code>304 Not Modified</code>: Client cached copy is still fresh (conditional request via <code>If-None-Match</code> or <code>ETag</code>).</li>
+            </ul>
+          </li>
+          <li><strong>4xx (Client Error):</strong> Client issued an invalid or unauthorized request:
+            <ul>
+              <li><code>400 Bad Request</code>: Malformed syntax, failed schema validation.</li>
+              <li><code>401 Unauthorized</code>: Missing or invalid authentication token/credentials.</li>
+              <li><code>403 Forbidden</code>: Authenticated, but user lacks permission to access resource (RBAC).</li>
+              <li><code>404 Not Found</code>: Resource does not exist at requested URL.</li>
+              <li><code>409 Conflict</code>: State conflict (e.g., unique email already registered).</li>
+              <li><code>429 Too Many Requests</code>: Rate limit exceeded.</li>
+            </ul>
+          </li>
+          <li><strong>5xx (Server Error):</strong> Server encountered an unhandled exception:
+            <ul>
+              <li><code>500 Internal Server Error</code>: Uncaught exception in backend code.</li>
+              <li><code>502 Bad Gateway</code>: Reverse proxy (Nginx) received an invalid response from upstream (Express crashed).</li>
+              <li><code>503 Service Unavailable</code>: Server is overloaded or undergoing scheduled maintenance.</li>
+              <li><code>504 Gateway Timeout</code>: Upstream server failed to respond within reverse proxy timeout limit.</li>
+            </ul>
+          </li>
+        </ul>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <h2>6. Browser Rendering Internals: The Critical Rendering Path</h2>
+        <p>
+          Once the browser receives the raw HTML byte stream over HTTP, how does it turn those characters into interactive pixels on the screen? This multi-stage pipeline is known as the <strong>Critical Rendering Path (CRP)</strong>.
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+HTML Bytes ---> Characters ---> Tokens ---> Nodes ---> DOM Tree
+                                                         |
+                                                         +---> Render Tree ---> Layout ---> Paint ---> Composite
+                                                         |     (Visual nodes)   (Geometry) (Pixels)   (GPU Layers)
+CSS Bytes  ---> Characters ---> Tokens ---> Nodes ---> CSSOM Tree
+          </div>
+          <div class="diagram-caption">Figure 1.4: The Browser Critical Rendering Path Pipeline</div>
+        </div>
+
+        <h3>The 5 Steps of Browser Rendering</h3>
+        <ol>
+          <li>
+            <strong>1. DOM (Document Object Model) Construction:</strong>
+            The browser decodes HTML raw bytes into characters, parses them into tokens (e.g., <code>&lt;html&gt;</code>, <code>&lt;body&gt;</code>, <code>&lt;p&gt;</code>), turns tokens into node objects with properties, and links them into a hierarchical tree data structure called the <strong>DOM Tree</strong>.
+          </li>
+          <li>
+            <strong>2. CSSOM (CSS Object Model) Construction:</strong>
+            As the parser encounters <code>&lt;link rel="stylesheet"&gt;</code> or <code>&lt;style&gt;</code>, it processes CSS rules into another tree where every node contains cascading computed styles. <em>CSS is render-blocking</em>: the browser will not paint anything until the CSSOM is completely constructed to avoid the Flash of Unstyled Content (FOUC).
+          </li>
+          <li>
+            <strong>3. Render Tree Creation:</strong>
+            The browser combines the DOM and CSSOM to build the <strong>Render Tree</strong>. Only elements that are visually displayed are included. Elements styled with <code>display: none</code> and non-visual tags like <code>&lt;head&gt;</code> and <code>&lt;script&gt;</code> are excluded. (Note: elements with <code>visibility: hidden</code> <em>are</em> included because they still occupy physical geometry).
+          </li>
+          <li>
+            <strong>4. Layout (Reflow):</strong>
+            The browser calculates the exact geometric coordinates, width, and height of every node on the viewport (e.g., node \(X\) is 300px wide, 120px tall, positioned at coordinates \((45, 120)\)).
+          </li>
+          <li>
+            <strong>5. Paint & Compositing:</strong>
+            The engine rasterizes the nodes into actual screen pixels (colors, text, shadows, borders) into separate memory bitmap layers. Finally, the GPU <strong>composites</strong> these layers together onto the physical screen buffer.
+          </li>
+        </ol>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ Performance Bottleneck: Reflow vs Repaint</div>
+          <p>
+            Modifying geometric CSS properties (e.g., <code>width</code>, <code>height</code>, <code>top</code>, <code>margin</code>) forces the browser to recalculate the Layout for the entire page (a heavy <strong>Reflow</strong>). Modifying color or visibility (e.g., <code>color</code>, <code>background-color</code>) skips Layout and triggers only a <strong>Repaint</strong>. For butter-smooth 60fps animations, always animate <code>transform</code> and <code>opacity</code>, which skip both Layout and Paint, running directly on the GPU via Compositing!
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 7 -->
+        <h2>7. Master Interview Walkthrough: "What happens when you enter a URL in a browser?"</h2>
+        <p>
+          This is arguably the most famous question in software engineering interviews. Senior interviewers use it to evaluate whether you understand the full stack of computing: from DNS, transport layers, encryption, servers, databases, down to client-side graphics rendering.
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+Step 1: URL Parsing & HSTS Check (Determine protocol, domain, port, path)
+   |
+Step 2: DNS Resolution (Browser cache -> OS cache -> Resolver -> Root -> TLD -> Authoritative)
+   |
+Step 3: TCP Connection Establishment (3-way handshake: SYN -> SYN-ACK -> ACK)
+   |
+Step 4: TLS 1.3 Cryptographic Handshake (ClientHello -> ServerHello -> Shared Secret Established)
+   |
+Step 5: Client sends HTTP Request (e.g. GET /dashboard HTTP/1.1 with Headers & Cookies)
+   |
+Step 6: Server / Reverse Proxy Processes Request (Nginx -> Node.js -> DB Query -> JSON/HTML Response)
+   |
+Step 7: Browser receives Response Stream (Status 200, Content-Type, Sets Cookies)
+   |
+Step 8: Critical Rendering Path (Parse HTML -> Build DOM -> Build CSSOM -> Render Tree -> Layout -> Paint)
+   |
+Step 9: Sub-resource fetching (Scripts, Styles, Fonts, Images) & JS Execution (V8 Engine)
+   |
+Step 10: User sees Interactive Page (Event Loop listens for clicks and user inputs)
+          </div>
+          <div class="diagram-caption">Figure 1.5: Complete 10-Step End-to-End URL Processing Lifecycle</div>
+        </div>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">🗣️ How to Structure Your Spoken Answer in an Interview</div>
+          <p>
+            <em>"I divide the URL lifecycle into four primary phases: <strong>1. Network Resolution & Connection Setup</strong> (URL parsing, DNS resolution to find the server IP, TCP 3-way handshake, and TLS cryptographic key exchange), <strong>2. Server-side Request Lifecycle</strong> (the reverse proxy terminates TLS, routes the request to our Node.js Express server, executes middleware authentication, queries PostgreSQL/MongoDB, and returns an HTTP response), <strong>3. Client-side Parsing & Rendering</strong> (the browser decodes HTML bytes, builds the DOM and CSSOM concurrently, generates the Render Tree, calculates Layout coordinates, paints pixels to GPU layers, and composites them), and <strong>4. Hydration & JavaScript Execution</strong> (executing bundled JavaScript, mounting React components, and attaching DOM event listeners for user interactivity)."</em>
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 8 -->
+        <h2>8. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-box">
+          <div class="exercise-header">
+            <span>Exercise 1.1: Building a Minimal HTTP/1.1 Server in Vanilla Node.js</span>
+            <span class="meta-pill">Hands-on</span>
+          </div>
+          <div class="exercise-body">
+            <p>
+              To understand HTTP without Express abstractions, write a native Node.js script using the built-in <code>http</code> module that inspects headers, parses query parameters, handles methods, and returns a formatted JSON payload with appropriate status codes and custom headers.
+            </p>
+
+            <pre><code class="language-javascript">// server.js - Native Node.js HTTP Server
+const http = require('http');
+const url = require('url');
+
+const server = http.createServer((req, res) => {
+  // 1. Parse URL and query strings
+  const parsedUrl = url.parse(req.url, true);
+  const path = parsedUrl.pathname;
+  const method = req.method.toUpperCase();
+
+  console.log(`[${new Date().toISOString()}] ${method} request to ${path}`);
+
+  // 2. Set default security & content headers
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('X-Powered-By', 'NodeJS-Native-Engine');
+
+  // 3. Simple Router
+  if (path === '/api/health' && method === 'GET') {
+    res.writeHead(200);
+    return res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+  }
+
+  if (path === '/api/tasks' && method === 'POST') {
+    let rawBody = '';
+
+    // Collect data stream chunks (Non-blocking I/O)
+    req.on('data', chunk => {
+      rawBody += chunk.toString();
+    });
+
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(rawBody);
+
+        if (!payload.title) {
+          res.writeHead(400);
+          return res.end(JSON.stringify({ error: 'Field "title" is required.' }));
+        }
+
+        const newTask = {
+          id: Math.floor(Math.random() * 10000),
+          title: payload.title,
+          createdAt: new Date().toISOString()
+        };
+
+        res.writeHead(201);
+        return res.end(JSON.stringify(newTask));
+      } catch (err) {
+        res.writeHead(400);
+        return res.end(JSON.stringify({ error: 'Malformed JSON payload.' }));
+      }
+    });
+    return;
+  }
+
+  // 4. Default 404 handler
+  res.writeHead(404);
+  res.end(JSON.stringify({ error: 'Endpoint not found.' }));
+});
+
+const PORT = 3000;
+server.listen(PORT, () => {
+  console.log(`Server actively listening on http://localhost:${PORT}`);
+});</code></pre>
+
+            <div class="exercise-solution">
+              <details>
+                <summary>Click to view code explanation & testing via cURL</summary>
+                <div style="padding-top: 0.75rem;">
+                  <p><strong>Testing the endpoint via terminal:</strong></p>
+                  <pre><code class="language-bash"># Test Health Check
+curl -i http://localhost:3000/api/health
+
+# Test Task Creation (POST with JSON)
+curl -i -X POST http://localhost:3000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Master Node.js Event Loop"}'</code></pre>
+                  <p>
+                    <strong>Key Architectural Insights:</strong> Notice how native Node.js does not buffer the request body automatically. Because Node.js handles incoming sockets as readable streams, large payloads arrive in chunks (<code>req.on('data')</code>), which prevents memory exhaustion on massive file uploads!
+                  </p>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 9: Interview Questions and Answers -->
+        <section class="interview-section">
+          <h2>Interview Questions and Answers</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            Below are 16 essential technical interview questions designed to test your knowledge of networking, HTTP mechanics, TLS, and browser rendering.
+          </p>
+
+          <div class="qa-toolbar">
+            <div class="qa-filter-btns">
+              <button class="qa-filter-btn active" data-filter="all">All (16)</button>
+              <button class="qa-filter-btn" data-filter="beginner">Beginner</button>
+              <button class="qa-filter-btn" data-filter="intermediate">Intermediate</button>
+              <button class="qa-filter-btn" data-filter="advanced">Advanced</button>
+              <button class="qa-filter-btn" data-filter="scenario">Scenario</button>
+            </div>
+            <button class="qa-toggle-all" type="button">Expand All Answers</button>
+          </div>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What is the difference between TCP and UDP, and when would you choose one over the other?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "TCP is a connection-oriented, reliable protocol that guarantees in-order packet delivery through sequence numbers and retransmissions. UDP is a connectionless, lightweight protocol that transmits packets with no delivery or ordering guarantees. We use TCP whenever data accuracy is non-negotiable—such as web browsing (HTTP), REST APIs, and database transactions. We choose UDP where low latency is prioritized over individual dropped packets—such as real-time gaming, live video streaming, DNS lookups, and the modern HTTP/3 protocol via QUIC."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <p><strong>Technical Deep Dive:</strong> TCP guarantees reliability through its sliding window mechanism, checksums, and acknowledgments. If a packet is dropped, TCP halts delivery of subsequent packets until the missing packet is retransmitted (known as <em>Head-of-Line Blocking</em>). UDP avoids this by having zero retransmissions and an 8-byte minimal header (compared to TCP's 20-60 byte header).</p>
+                <p><strong>Common Trap:</strong> Stating that "UDP is always faster." UDP has lower protocol overhead, but if your application layer tries to rebuild reliability over UDP poorly, it will be slower and buggier than well-tuned kernel TCP.</p>
+                <div class="follow-up-box">
+                  <div class="follow-up-label">Interviewer Follow-up:</div>
+                  <p><em>"If TCP has head-of-line blocking, how does HTTP/3 solve this while remaining fast?"</em></p>
+                  <p><strong>Answer:</strong> HTTP/3 runs on top of <strong>QUIC</strong>, which implements its own multiplexed streams over UDP. If one stream loses a packet, only that specific stream pauses; all other parallel streams continue without head-of-line blocking.</p>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">What is the difference between HTTP/1.1, HTTP/2, and HTTP/3?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "HTTP/1.1 is text-based and processes requests sequentially per TCP connection, leading to head-of-line blocking unless browsers open multiple parallel sockets (typically up to 6 per domain). HTTP/2 introduced binary framing, multiplexing multiple concurrent streams over a single TCP connection, header compression via HPACK, and Server Push. HTTP/3 replaces TCP with QUIC over UDP, eliminating TCP-level head-of-line blocking and providing faster 0-RTT handshakes."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <p><strong>Comparison Table:</strong></p>
+                <ul>
+                  <li><strong>HTTP/1.1:</strong> Text-formatted headers, persistent connections (Keep-Alive), pipelining (rarely supported), 6 socket limit per origin.</li>
+                  <li><strong>HTTP/2:</strong> Binary protocol, multiplexed streams over 1 TCP connection, HPACK header compression, eliminates application-level HOL blocking.</li>
+                  <li><strong>HTTP/3:</strong> Built on QUIC (UDP), connection migration across Wi-Fi/cellular IP changes, independent stream retransmissions.</li>
+                </ul>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">Explain the difference between idempotent and non-idempotent HTTP methods. Why is POST not idempotent?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An HTTP method is idempotent if executing the identical request multiple times produces the exact same server state as executing it once. GET, PUT, and DELETE are idempotent. POST is not idempotent because repeating the request creates multiple independent resources—such as creating duplicate orders or charging a credit card multiple times."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <p><strong>Why PUT is idempotent while POST is not:</strong></p>
+                <pre><code class="language-http"># PUT /api/users/42 -> sets user 42 name to "Alice"
+# Doing this 10 times leaves user 42 name as "Alice". (Idempotent)
+
+# POST /api/orders -> creates an order
+# Doing this 10 times creates 10 separate order rows with 10 IDs. (Non-idempotent)</code></pre>
+                <div class="follow-up-box">
+                  <div class="follow-up-label">Interviewer Follow-up:</div>
+                  <p><em>"How do production payment gateways like Stripe make POST requests safe from duplicate charges if a network timeout occurs?"</em></p>
+                  <p><strong>Answer:</strong> They use an <strong>Idempotency Key</strong> (a unique UUID sent in a custom header like <code>Idempotency-Key: e82b-...</code>). The server records the key in Redis/database; if a duplicate request arrives with the same key, it returns the cached response instead of charging again.</p>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">What is the difference between a 401 Unauthorized and a 403 Forbidden HTTP status code?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "401 Unauthorized means the user has not provided valid authentication credentials—the server does not know who they are. 403 Forbidden means the server successfully authenticated who the user is, but the user lacks the necessary authorization or role permissions to access the requested resource."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <p><strong>Analogy:</strong> 401 is trying to board an airplane without an ID. 403 is showing a valid ID, but holding an Economy ticket while trying to sit in the First Class cabin.</p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What is the difference between Reflow (Layout) and Repaint in browser rendering? How do you prevent layout thrashing?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Reflow is the computation of the physical geometry, position, and dimensions of elements on the page. Repaint is drawing pixels (colors, borders, shadows) onto memory buffers after the layout is finalized. Reflow always triggers Repaint, making it much more computationally expensive. Layout thrashing happens when JavaScript repeatedly reads layout properties (like offsetHeight) immediately after writing style changes inside a loop, forcing synchronous layout recalculations. We prevent it by batching DOM reads and writes or utilizing requestAnimationFrame."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <p><strong>Vulnerable Code (Layout Thrashing):</strong></p>
+                <pre><code class="language-javascript">// BAD: Forces browser to recalculate layout on every iteration!
+for (let i = 0; i < elements.length; i++) {
+  const width = elements[i].offsetWidth; // READ (Forces Reflow)
+  elements[i].style.width = width + 10 + 'px'; // WRITE (Invalidates Layout)
+}
+
+// GOOD: Batch reads first, then batch writes
+const widths = elements.map(el => el.offsetWidth); // Batch READ
+elements.forEach((el, i) => {
+  el.style.width = widths[i] + 10 + 'px'; // Batch WRITE
+});</code></pre>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">How does DNS resolution work step-by-step when resolving a domain name?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The browser first checks its internal DNS cache, then the OS DNS cache, and the local hosts file. If not found, it queries the recursive resolver (such as your ISP or 8.8.8.8). If the resolver doesn't have it cached, it performs an iterative lookup: querying the Root Nameserver to locate the Top-Level Domain server (.com), querying the TLD server to locate the Authoritative Nameserver for the domain, and finally querying the Authoritative server to obtain the final A or AAAA record with an IP address."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">What are the key security attributes on HTTP Cookies: HttpOnly, Secure, and SameSite?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "HttpOnly blocks JavaScript from accessing document.cookie, completely protecting the session token from XSS script theft. Secure ensures the cookie is only transmitted over encrypted HTTPS connections, preventing plaintext sniffing. SameSite governs cross-site request behavior to prevent CSRF attacks: Strict never sends the cookie on third-party links, Lax sends it only on top-level GET navigations, and None permits cross-site sharing (only allowed when Secure is also set)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">What happens during a TLS 1.3 handshake, and how does it achieve 1-RTT and 0-RTT latency?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In TLS 1.3, the client sends its supported cipher suites and its ephemeral Diffie-Hellman public key shares directly inside the very first ClientHello packet. The server responds with ServerHello, selecting the cipher and providing its key share and digital certificate. Both parties immediately derive the shared symmetric encryption key in just 1 round trip. In 0-RTT resumption, returning clients use a pre-shared session ticket from a previous session to send encrypted application data in the initial packet."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">Scenario: Your frontend API call returns a 502 Bad Gateway. Where in the architecture is the failure occurring, and how do you debug it?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A 502 Bad Gateway indicates that an edge reverse proxy (such as Nginx, Cloudflare, or an AWS ALB) attempted to forward the request to an upstream application server (like Node.js Express), but the upstream server either crashed, refused the connection, closed the socket unexpectedly, or was completely unreachable. To debug, I first verify if the Node.js process is running via PM2 or systemctl, inspect the Nginx error logs (error.log), and check Node application logs for unhandled exceptions or Out-Of-Memory (OOM) crashes."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <p><strong>Step-by-step diagnostic checklist:</strong></p>
+                <ol>
+                  <li>Check reverse proxy error logs: <code>tail -f /var/log/nginx/error.log</code> (look for <code>connect() failed (111: Connection refused) while connecting to upstream</code>).</li>
+                  <li>Check Node.js status: <code>pm2 status</code> or <code>docker ps</code>.</li>
+                  <li>Verify local port binding: <code>netstat -tlpn | grep 3000</code> or <code>curl -I http://localhost:3000/api/health</code> directly on the server host.</li>
+                  <li>Check memory pressure: <code>dmesg -T | grep -i oom</code> to check if the Linux kernel OOM-killer killed the Node process.</li>
+                </ol>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">Scenario: A user clicks "Pay Now" on an e-commerce checkout page, but their mobile connection drops before the server response returns. How do you design the system so they aren't charged twice upon retrying?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I implement an Idempotency Layer. When the checkout modal renders, the client generates a unique UUID (Idempotency Key). When submitting the POST /checkout request, this key is included in the headers. On the backend, before processing payment, we check Redis using an atomic SETNX key with a lock. If the key already exists and has completed, we return the cached successful receipt. If it's currently processing, subsequent clicks are told to wait. If it failed, it safely permits a retry."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the difference between a 301 and a 302/307 redirect? What are the SEO and caching implications?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "301 Moved Permanently tells browsers and search engine crawlers that the resource has permanently relocated to the new URL; search engines transfer link equity (SEO rank), and browsers cache the redirect aggressively. 302 Found or 307 Temporary Redirect indicates that the relocation is temporary; search engines keep indexing the original URL, and browsers do not cache the redirection permanently."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">Why is CSS render-blocking while JavaScript is parser-blocking by default? How do `async` and `defer` change this?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "CSS is render-blocking because the browser cannot calculate layout or paint pixels without the CSSOM; painting HTML before CSS finishes parsing causes a jarring Flash of Unstyled Content. JavaScript is parser-blocking because scripts can execute document.write() or manipulate the DOM tree synchronously, forcing the HTML tokenizer to pause. With defer, the script downloads in parallel in the background and executes in document order only after HTML parsing completes. With async, the script downloads in parallel and executes immediately whenever it finishes downloading, pausing the parser at that instant."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is TCP Head-of-Line (HOL) blocking versus HTTP Head-of-Line blocking?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "HTTP Head-of-Line blocking in HTTP/1.1 occurs when a client must wait for a previous slow request (like a large file download) to finish over the connection before the next request can be served. HTTP/2 solved this at the application layer with multiplexed streams. However, TCP Head-of-Line blocking occurs at the transport layer: because TCP guarantees strictly ordered byte streams, if a single packet is lost on the network, all other multiplexed streams inside that TCP connection are stalled at the OS kernel buffer until the lost packet is retransmitted. HTTP/3 solves this by migrating to QUIC over UDP."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the difference between URI, URL, and URN?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A URI (Uniform Resource Identifier) is the overarching umbrella identifier for any resource. A URL (Uniform Resource Locator) is a URI that specifies both the resource's identity and how to access it (the protocol and location, like https://example.com/index.html). A URN (Uniform Resource Name) identifies a resource by name in a particular namespace without specifying where to find it (like urn:isbn:0451450523)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is an ETag and how does conditional HTTP caching work with 304 Not Modified?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An ETag (Entity Tag) is an HTTP response header containing an opaque hash or version identifier representing the state of a resource. When the browser requests the resource again, it sends the stored hash in the If-None-Match header. If the resource hasn't changed, the server responds with a 304 Not Modified with no response body, saving bandwidth and network latency."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">Scenario: Your website has high initial page load latency for users in Australia, while your servers are located in North America. What architectural changes would you propose to reduce latency?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The root cause is physical speed-of-light latency across 12,000 km, where each round trip adds 150–200ms. I would implement three solutions: 1. Deploy a Global CDN (such as Cloudflare or AWS CloudFront) to cache static assets (HTML, CSS, JS, images) and terminate TLS at an Australian Edge Point-of-Presence, reducing the TCP/TLS handshake latency from 300ms to under 15ms. 2. Enable HTTP/3 (QUIC) for faster connection establishment and better performance on mobile packet loss. 3. For dynamic API calls, utilize edge caching or deploy read-replica databases with region-specific serverless/container endpoints."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav">
+          <!-- Injected dynamically by assets/js/chapter.js -->
+        </nav>
+
+      </div>
+    </main>
+
+    <!-- In-page Table of Contents Rail -->
+    <aside id="chapter-toc" class="table-of-contents-rail">
+      <!-- Injected dynamically by assets/js/chapter.js -->
+    </aside>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 41: Modern React and Next.js | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master modern React and Next.js App Router: CSR vs SSR vs SSG vs ISR, React Server Components (RSC), 'use client' boundaries, Server Actions, streaming with Suspense, and hydration error debugging.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="41">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART IX — Advanced and Frequently Overlooked Topics</div>
+          <h1 class="chapter-title">Chapter 41: Modern React and Next.js</h1>
+          <p class="chapter-lead">
+            The modern paradigm of full-stack frontend engineering: The rendering spectrum (CSR vs. SSR vs. SSG vs. ISR), React Server Components (RSC) under the hood, the <code>'use client'</code> boundary, the Next.js App Router architecture, Server Actions and Progressive Enhancement, UI streaming with React Suspense, and diagnosing hydration mismatch bugs.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Next.js App Router</span>
+              <span class="meta-pill">RSC &amp; Hydration</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Evaluate the web rendering spectrum: <strong>CSR</strong>, <strong>SSR</strong>, <strong>SSG</strong>, and <strong>ISR</strong> across latency, compute costs, and SEO.</li>
+            <li>Master the mental model of <strong>React Server Components (RSC)</strong> and the <strong>React Flight Data Stream</strong>.</li>
+            <li>Deconstruct the <code>'use client'</code> directive and master component interleaving rules.</li>
+            <li>Architect web applications using the <strong>Next.js App Router</strong>: <code>layout.tsx</code>, <code>page.tsx</code>, <code>loading.tsx</code>, and <code>error.tsx</code>.</li>
+            <li>Stream UI progressively using <strong>React Suspense</strong> and HTTP chunked transfer encoding.</li>
+            <li>Implement full-stack mutations via <strong>Server Actions</strong> with automatic cache revalidation.</li>
+            <li>Identify, reproduce, and resolve subtle <strong>React Hydration Mismatch</strong> errors.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Web Rendering Spectrum: CSR, SSR, SSG, and ISR</h2>
+        <p>
+          The modern web is not binary between "Single Page Application (SPA)" and "Server-Rendered Multi-Page Application (MPA)". Applications select rendering strategies on a per-route basis:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Rendering Strategy</th>
+                <th>When HTML is Generated</th>
+                <th>Strengths</th>
+                <th>Trade-Offs &amp; Bottlenecks</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Client-Side Rendering (CSR)</strong></td>
+                <td>In the user's browser via JavaScript execution after downloading a blank HTML shell.</td>
+                <td>Fast transitions after initial load; rich desktop-like app feel; zero backend server compute (served from S3/CDN).</td>
+                <td>Slow First Contentful Paint (FCP); poor SEO for crawlers that don't execute JS; heavy bundle sizes on mobile devices.</td>
+              </tr>
+              <tr>
+                <td><strong>Server-Side Rendering (SSR)</strong></td>
+                <td>On the backend server on <strong>every incoming HTTP request</strong>.</td>
+                <td>Always up-to-date dynamic data; excellent SEO; fast initial content display for users.</td>
+                <td>Higher server compute load; higher Time To First Byte (TTFB) because server must wait for database queries before sending HTML.</td>
+              </tr>
+              <tr>
+                <td><strong>Static Site Generation (SSG)</strong></td>
+                <td>At <strong>application build time</strong> (e.g., <code>next build</code>).</td>
+                <td>⚡ Blazing fast: pre-rendered static HTML delivered from global edge CDNs; near-zero server infrastructure costs.</td>
+                <td>Stale content: updating a blog post or price requires re-running the entire build and deployment pipeline.</td>
+              </tr>
+              <tr>
+                <td><strong>Incremental Static Regeneration (ISR)</strong></td>
+                <td>At build time, then regenerated <strong>in the background on the edge</strong> after a configured <code>revalidate</code> TTL window.</td>
+                <td>Combines the edge speed of SSG with the freshness of SSR without rebuilding the whole site.</td>
+                <td>Eventual consistency: the first user visiting an expired page still sees stale data while background re-generation occurs.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. React Server Components (RSC) Mental Model</h2>
+        <p>
+          Introduced in React 18 and championed by the Next.js App Router, <strong>React Server Components (RSC)</strong> represent the most significant paradigm shift in React since Hooks.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: React Server Components vs Client Bundle</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Traditional React (CSR/SSR):
+All component code (even server-fetching logic) is bundled and downloaded to browser!
+Client Bundle Size: 500 KB+ (Contains date-fns, markdown-parser, lodash, etc.)
+
+React Server Components (RSC):
++-------------------------------------------------------------------------+
+| SERVER BOUNDARY                                                         |
+| - ServerComponent.tsx (directly queries database via Prisma / pg)       |
+| - Heavy dependencies (marked, date-fns) stay 100% on the server!        |
+| - Generates serialized &quot;React Flight Data Stream&quot; (JSON-like UI tree)    |
++-------------------------------------------------------------------------+
+                                    |
+                                    | (Streams Flight Tree: 0 KB JS overhead!)
+                                    v
++-------------------------------------------------------------------------+
+| BROWSER BOUNDARY (Client)                                               |
+| - Only Client Components ('use client') ship JavaScript to the browser! |
+| - Client merges Flight Tree into existing DOM without unmounting state   |
++-------------------------------------------------------------------------+</code></pre>
+        </div>
+
+        <h3>Key Properties of Server Components</h3>
+        <ul>
+          <li><strong>Zero Client Bundle Size:</strong> Dependencies imported inside Server Components are never shipped to the client browser.</li>
+          <li><strong>Direct Backend Resource Access:</strong> Server Components can directly read files from disk, access microservices via private VPC networks, and execute raw SQL queries with zero API endpoints.</li>
+          <li><strong>No State or Effects:</strong> Because they execute once on the server, Server Components <strong>cannot use <code>useState</code>, <code>useReducer</code>, <code>useEffect</code>, or browser DOM APIs</strong>.</li>
+        </ul>
+
+        <!-- Section 3 -->
+        <h2>3. The 'use client' Boundary &amp; Component Interleaving</h2>
+        <p>
+          A common misconception is that <code>'use client'</code> means "this component only runs in the browser."
+        </p>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ The Reality of 'use client'</div>
+          <p>
+            <code>'use client'</code> does <strong>not</strong> make a component client-only. Client Components are <strong>still pre-rendered to static HTML on the server</strong> during the initial page load (SSR)! The <code>'use client'</code> directive simply defines a <strong>boundary</strong> where React packages that component and its dependencies into the client JavaScript bundle for browser interactivity and hydration.
+          </p>
+        </div>
+
+        <h3>Component Interleaving Rules</h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Interleaving Server and Client Components Cleanly</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">// ❌ FORBIDDEN: You CANNOT directly import a Server Component into a Client Component!
+&#39;use client&#39;;
+import ServerComponent from &#39;./ServerComponent&#39;; // ERROR! Forces ServerComponent into client bundle!
+
+export function ClientContainer() {
+  return &lt;div&gt;&lt;ServerComponent /&gt;&lt;/div&gt;;
+}
+
+// ✅ CLEAN PATTERN: Pass Server Component as children / slots into Client Component!
+// ClientModal.tsx
+&#39;use client&#39;;
+import { useState } from &#39;react&#39;;
+
+export function ClientModal({ children }: { children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    &lt;div&gt;
+      &lt;button onClick={() =&gt; setIsOpen(!isOpen)}&gt;Toggle Modal&lt;/button&gt;
+      {isOpen &amp;&amp; &lt;div className=&quot;modal-content&quot;&gt;{children}&lt;/div&gt;}
+    &lt;/div&gt;
+  );
+}
+
+// Page.tsx (Server Component)
+import { ClientModal } from &#39;./ClientModal&#39;;
+import { ServerDataWidget } from &#39;./ServerDataWidget&#39;;
+
+export default async function Page() {
+  return (
+    &lt;ClientModal&gt;
+      {/* ServerDataWidget executes 100% on the server, passed as children! */}
+      &lt;ServerDataWidget /&gt;
+    &lt;/ClientModal&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. The Next.js App Router Architecture</h2>
+        <p>
+          Next.js uses a file-system based router in the <code>app/</code> directory where folder structures define URL paths and special file conventions handle page lifecycles:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>File Convention</th>
+                <th>Role &amp; Architectural Behavior</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>page.tsx</code></td>
+                <td>Defines the unique UI content of a route. Makes a route publicly accessible.</td>
+              </tr>
+              <tr>
+                <td><code>layout.tsx</code></td>
+                <td>Shared UI shell wrapping child routes (headers, sidebars). <strong>Preserves client component state across route navigations</strong> without re-rendering or unmounting.</td>
+              </tr>
+              <tr>
+                <td><code>loading.tsx</code></td>
+                <td>Instant fallback UI (skeletons/spinners) wrapped automatically in a <strong>React Suspense Boundary</strong> while the page’s async data loads.</td>
+              </tr>
+              <tr>
+                <td><code>error.tsx</code></td>
+                <td>Client-side React <strong>Error Boundary</strong> that isolates runtime errors in a route segment without crashing the entire layout. Must use <code>'use client'</code>.</td>
+              </tr>
+              <tr>
+                <td><code>not-found.tsx</code></td>
+                <td>UI rendered when the <code>notFound()</code> function is invoked or a route is invalid.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Streaming with React Suspense</h2>
+        <p>
+          In traditional SSR, page generation is blocked by the slowest database query. If a user profile takes 10ms to load but their analytics metrics take 2,000ms, the user stares at a blank screen for 2,000ms before receiving any HTML.
+        </p>
+        <p>
+          <strong>Streaming with Suspense</strong> breaks the page into independent asynchronous chunks. Next.js immediately sends the fast HTML layout and fallback skeletons, then streams in slow data chunks over HTTP chunked transfer encoding as promises resolve:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Streaming UI via Suspense Boundaries</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import { Suspense } from &#39;react&#39;;
+import { UserProfileHeader } from &#39;./UserProfileHeader&#39;;
+import { SlowAnalyticsDashboard } from &#39;./SlowAnalyticsDashboard&#39;;
+import { SkeletonMetrics } from &#39;./SkeletonMetrics&#39;;
+
+export default function DashboardPage() {
+  return (
+    &lt;main className=&quot;dashboard-layout&quot;&gt;
+      {/* 1. Fast component renders and streams to client in 10ms */}
+      &lt;UserProfileHeader /&gt;
+
+      {/* 2. Slow component wrapped in Suspense: Skeleton renders immediately */}
+      &lt;Suspense fallback={&lt;SkeletonMetrics /&gt;}&gt;
+        {/* 3. When this async DB query finishes in 1.5s, HTML streams in to replace Skeleton! */}
+        &lt;SlowAnalyticsDashboard /&gt;
+      &lt;/Suspense&gt;
+    &lt;/main&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Server Actions &amp; Form Mutations</h2>
+        <p>
+          <strong>Server Actions</strong> are asynchronous functions executed directly on the server, callable from client-side forms, buttons, or custom hooks without authoring custom REST API route handlers:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Production Server Action with Cache Revalidation</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">&#39;use server&#39;;
+
+import { revalidatePath } from &#39;next/cache&#39;;
+import { pool } from &#39;@/lib/db&#39;;
+import { z } from &#39;zod&#39;;
+
+const CreateTodoSchema = z.object({
+  title: z.string().min(3).max(100)
+});
+
+export async function createTodoAction(formData: FormData) {
+  const rawTitle = formData.get(&#39;title&#39;);
+  const validated = CreateTodoSchema.safeParse({ title: rawTitle });
+
+  if (!validated.success) {
+    return { error: &#39;Invalid todo title format&#39; };
+  }
+
+  // Direct database query on the server!
+  await pool.query(&#39;INSERT INTO todos (title, completed) VALUES ($1, false)&#39;, [
+    validated.data.title
+  ]);
+
+  // Purge server cache and re-render the /todos route instantly
+  revalidatePath(&#39;/todos&#39;);
+}</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Deconstructing Hydration Mismatch Errors</h2>
+        <p>
+          A <strong>Hydration Mismatch</strong> occurs when the pre-rendered HTML structure generated by the server does not exactly match the initial Virtual DOM tree generated by React in the browser during hydration.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Root Cause</th>
+                <th>Code Anti-Pattern</th>
+                <th>Remediation Strategy</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Browser-Specific Globals</strong></td>
+                <td><code>&lt;div&gt;{typeof window !== 'undefined' ? 'Client' : 'Server'}&lt;/div&gt;</code> (Server renders 'Server', browser renders 'Client' \(\rightarrow\) Crash!).</td>
+                <td>Use an <code>isMounted</code> state guard inside <code>useEffect()</code>, which only executes after hydration finishes.</td>
+              </tr>
+              <tr>
+                <td><strong>Non-Deterministic Data</strong></td>
+                <td><code>&lt;span&gt;{new Date().toLocaleTimeString()}&lt;/span&gt;</code> (Server renders at 12:00:00; browser hydrates at 12:00:01 \(\rightarrow\) Mismatch!).</td>
+                <td>Pass deterministic timestamps from the server as props, or render timestamps only inside client-mounted hooks.</td>
+              </tr>
+              <tr>
+                <td><strong>Invalid HTML Structure</strong></td>
+                <td>Nesting a <code>&lt;div&gt;</code> inside a <code>&lt;p&gt;</code>, or omitting <code>&lt;tbody&gt;</code> inside a <code>&lt;table&gt;</code>.</td>
+                <td>Browsers automatically repair invalid HTML by closing <code>&lt;p&gt;</code> tags early, creating an altered DOM that mismatches React’s Fiber tree. Strictly adhere to HTML spec nesting.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 8 -->
+        <h2>8. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Client Mounting Guard Hook against Hydration Mismatches</h3>
+        <p>
+          <strong>Scenario:</strong> Create a custom React hook <code>useIsMounted()</code> that guarantees a component only renders browser-dependent state (like <code>localStorage</code> or window dimensions) after initial hydration completes safely.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">&#39;use client&#39;;
+
+import { useState, useEffect } from &#39;react&#39;;
+
+export function useIsMounted(): boolean {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() =&gt; {
+    // useEffect executes strictly on the client AFTER initial hydration completes!
+    setMounted(true);
+  }, []);
+
+  return mounted;
+}
+
+// Usage Example:
+export function ThemeDisplay() {
+  const isMounted = useIsMounted();
+  if (!isMounted) {
+    return &lt;div className=&quot;skeleton-placeholder&quot;&gt;Loading theme...&lt;/div&gt;;
+  }
+  return &lt;div&gt;Active Theme: {localStorage.getItem(&#39;theme&#39;) || &#39;light&#39;}&lt;/div&gt;;
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: Progressive Enhancement Form with Server Actions and useFormStatus</h3>
+        <p>
+          <strong>Scenario:</strong> Build a submit button component that utilizes React 19 / Next.js <code>useFormStatus</code> to disable itself and display a spinner while a Server Action is pending.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">&#39;use client&#39;;
+
+import { useFormStatus } from &#39;react-dom&#39;;
+
+export function SubmitButton({ label = &#39;Save&#39; }: { label?: string }) {
+  // Automatically detects when the enclosing &lt;form action={serverAction}&gt; is executing
+  const { pending } = useFormStatus();
+
+  return (
+    &lt;button type=&quot;submit&quot; disabled={pending} className=&quot;btn-primary&quot;&gt;
+      {pending ? &#39;Saving changes...&#39; : label}
+    &lt;/button&gt;
+  );
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 9: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>9. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering React Server Components, Next.js App Router, rendering strategies, hydration mismatches, and Server Actions.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the difference between SSR, SSG, and ISR?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "SSR (Server-Side Rendering) generates dynamic HTML on the server for every incoming request. SSG (Static Site Generation) pre-renders HTML once at build time, delivering fast edge CDN caching for static pages. ISR (Incremental Static Regeneration) serves static build pages from the edge, while regenerating them in the background as requests arrive after a configured revalidate time window."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is a React Server Component (RSC)?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "React Server Components are components that execute exclusively on the server and never ship their JavaScript code to the client browser. They can directly query databases or file systems, add zero kilobytes to the client bundle, and serialize their rendered output into a React Flight data stream that the browser merges into the DOM."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What does the 'use client' directive actually mean in Next.js?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`'use client'` does not mean client-only; Client Components are still pre-rendered to HTML on the server during the initial page load. It defines a boundary indicating that this component and its imported dependencies must be packaged into the client JavaScript bundle to enable React hooks (`useState`, `useEffect`) and browser event listeners (`onClick`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is the difference between layout.tsx and template.tsx in Next.js?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`layout.tsx` persists across route transitions; it wraps child pages and preserves client component state and DOM elements without re-rendering or unmounting. `template.tsx` creates a new instance on every navigation, resetting state and re-running effects, which is useful for page entrance animations or route-change analytics logging."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is a Server Action in Next.js?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Server Action is an asynchronous function marked with `'use server'` that executes directly on the backend server. It can be called from client forms or button event handlers without creating manual API endpoints, supporting Progressive Enhancement where forms can submit even before client JavaScript has finished downloading."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What causes a React Hydration Mismatch error and how do you resolve it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Hydration errors occur when the server-rendered HTML doesn't match the client's initial Virtual DOM tree. Common causes include accessing `window` or `localStorage` during initial render, non-deterministic values like `Date.now()`, or invalid HTML nesting (like `<div>` inside `<p>`). Fixes include deferring client-only logic to `useEffect()` or using `suppressHydrationWarning`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">How does UI Streaming with Suspense improve perceived performance?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In traditional SSR, page transmission is blocked by the slowest database query. Streaming with Suspense allows the server to send the fast layout shell immediately alongside loading skeletons. As slow asynchronous data components resolve, the server streams the remaining HTML chunks over the existing HTTP connection, drastically cutting Time to First Byte (TTFB)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">Can a Client Component import a Server Component directly?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "No. Importing a Server Component into a Client Component forces the server component to be compiled into the client bundle, causing build errors if it uses server-only APIs. However, you can pass a Server Component as a child or prop (`children`) into a Client Component, allowing the Server Component to execute on the server while the Client Component manages the outer UI shell."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is the difference between revalidatePath and revalidateTag in Next.js?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`revalidatePath('/products')` purges the cached static or server data associated with a specific URL route path. `revalidateTag('collection-42')` purges cache entries across any route that tagged its fetch requests with that identifier, allowing targeted cache invalidation across multiple disparate pages in a single call."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is the React Flight Data Stream?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Flight Data Stream is React's compact, binary-like serialized representation of a rendered Server Component tree. It describes the virtual DOM nodes, props, and 'slots' where Client Components should mount. When navigating between routes, Next.js streams this Flight tree, allowing the browser to update the UI without re-fetching full HTML or losing client state."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">How do Route Groups work in the Next.js App Router?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Route groups are directories wrapped in parentheses, like `app/(marketing)/about` and `app/(dashboard)/settings`. They organize routes into logical sections and allow applying different root layouts to different sections of the application without affecting the public URL path (e.g., the URL is `/about`, not `/(marketing)/about`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the purpose of generateStaticParams in Next.js?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`generateStaticParams` is used in dynamic routes (`[slug]`) to define the exact list of route parameters to pre-render statically at build time (replacing `getStaticPaths` from the Pages router). During `next build`, Next.js executes this function and generates static HTML files for all returned parameter combinations."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">How does error.tsx handle runtime errors in the Next.js App Router?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`error.tsx` automatically wraps the route segment and its children in a React Error Boundary. If an error occurs during rendering or data fetching, it catches the exception and renders fallback error UI with a `reset()` function, isolating the failure to that specific sub-route without crashing the parent layout or navigation bar."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is Progressive Enhancement with Server Actions?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "When a Server Action is passed to a `<form action={action}>`, the form functions as a standard HTML form submission even if JavaScript has failed to download or is disabled by the user. When JavaScript is enabled, React intercepts the form submission, sending an asynchronous fetch request with seamless client-side state updates."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is the Server-Only package in Next.js and why should you use it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The `server-only` package throws a build-time compile error if a module containing private server code (like database clients or secret API keys) is accidentally imported into a Client Component. Adding `import 'server-only'` at the top of utility files prevents catastrophic data and credential leaks into client bundles."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How does Request Deduplication work across Server Components in Next.js?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Next.js extends the native `fetch` API to automatically memoize HTTP requests with identical URLs and options during a single server render pass. If three separate Server Components in the tree call `fetch('https://api.com/user/me')`, the network request executes exactly once, eliminating prop-drilling or Context wrappers for server data."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What are Parallel Routes and Intercepting Routes in Next.js?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Parallel Routes (`@slot`) allow simultaneously rendering multiple independent pages within the same layout (like dashboard panels). Intercepting Routes (`(.)photo/[id]`) allow loading a route within the current layout context (e.g., displaying a photo modal over a feed on client clicks) while preserving direct URL shareability that displays the full photo page on refresh."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">Why can't you pass functions as props from Server Components to Client Components?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Props passed across the Server-to-Client boundary must be serializable into the React Flight data stream (JSON primitives, plain objects, arrays). JavaScript functions, class instances, or database connections cannot be serialized across a network stream. The exception is Server Actions, which are converted into unique cryptographic endpoint references."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is Partial Prerendering (PPR) in Next.js?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Partial Prerendering combines static and dynamic rendering in a single HTTP response. The static outer shell (layouts, static text) is pre-rendered at build time and served immediately from the edge CDN, while dynamic holes wrapped in Suspense boundaries are streamed concurrently from the server, giving the speed of SSG with the dynamism of SSR."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you explain the transition from Pages router to App router to team stakeholders?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Pages router shipped monolithic client bundles where all page code ran in the browser. The App router embraces Server Components, which slashes client bundle sizes by 40–60%, eliminates redundant API endpoints through direct database access, and improves perceived page load times through progressive UI streaming with Suspense."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

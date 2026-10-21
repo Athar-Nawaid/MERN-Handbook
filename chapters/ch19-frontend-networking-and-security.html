@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 19: Frontend Networking and Application Security | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to Frontend Networking and Security: Fetch vs Axios, silent token refresh interceptors, AbortController cancellation, XSS defense, CSP headers, and CSRF protection in React.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="19">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART III — React and Redux Toolkit</div>
+          <h1 class="chapter-title">Chapter 19: Frontend Networking and Application Security</h1>
+          <p class="chapter-lead">
+            Hardening client-side web applications: resilient HTTP abstractions with Axios and Fetch, transparent token refresh queues, in-flight request cancellation with AbortController, Cross-Site Scripting (XSS) defense in React, Content Security Policy (CSP), and CSRF protection for SPAs.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Client Security</span>
+              <span class="meta-pill">Interceptors & CSP</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Compare the native <strong>Fetch API</strong> against <strong>Axios</strong> across interceptors, defaults, and error status handling.</li>
+            <li>Implement a production-grade <strong>Silent Token Refresh Interceptor</strong> that queues concurrent failed requests while renewing expired access tokens.</li>
+            <li>Cancel in-flight HTTP requests and prevent race conditions using <code>AbortController</code> and <code>AbortSignal</code>.</li>
+            <li>Understand how React escapes content by default and where XSS vulnerabilities lurk (e.g., <code>dangerouslySetInnerHTML</code>, markdown rendering, and <code>javascript:</code> hrefs).</li>
+            <li>Sanitize untrusted HTML inputs using <strong>DOMPurify</strong> with strict tag and attribute allowlists.</li>
+            <li>Configure strict <strong>Content Security Policy (CSP)</strong> headers (nonces, <code>script-src</code>, <code>connect-src</code>) to mitigate XSS impact.</li>
+            <li>Defend Single Page Applications against <strong>CSRF</strong> when using cookie-based session authentication.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Fetch API vs Axios: The Definitive Architectural Comparison</h2>
+        <p>
+          Frontend developers must choose between the browser's native <code>fetch()</code> API and third-party HTTP clients like <code>axios</code>. Understanding their architectural differences is a classic interview question.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Native Fetch API</th>
+                <th>Axios</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>HTTP Error Rejections</strong></td>
+                <td><strong>Does NOT reject</strong> on HTTP 4xx/5xx status codes! The Promise only rejects on true network failures. Requires manual <code>if (!res.ok) throw Error(...)</code> checks.</td>
+                <td><strong>Automatically rejects</strong> the promise for any HTTP status code outside the <code>2xx</code> range (configurable via <code>validateStatus</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>JSON Parsing</strong></td>
+                <td>Manual 2-step process: <code>const res = await fetch(...); const data = await res.json();</code></td>
+                <td>Automatic JSON transformation: response payload is directly available on <code>res.data</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>Interceptors</strong></td>
+                <td>No native support. Requires writing custom wrapper functions.</td>
+                <td>First-class support for Request and Response interceptors (<code>axios.interceptors</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Request Cancellation</strong></td>
+                <td>Supported via <code>AbortController</code> and <code>signal</code>.</td>
+                <td>Supported via <code>AbortController</code> and <code>signal</code> (legacy <code>CancelToken</code> is deprecated).</td>
+              </tr>
+              <tr>
+                <td><strong>Bundle Footprint</strong></td>
+                <td><strong>0 KB</strong> (Built directly into modern browsers and Node.js 18+).</td>
+                <td>\(\approx\) 11–13 KB minified and gzipped.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Production Silent Token Refresh Interceptor</h2>
+        <p>
+          In token-based authentication architectures (JWT), short-lived Access Tokens expire after 10–15 minutes. When an access token expires while the user is actively using the application, the backend returns HTTP 401 Unauthorized.
+        </p>
+        <p>
+          Rather than forcing the user to log in again, the frontend must execute a <strong>Silent Refresh</strong>:
+        </p>
+        <ol>
+          <li>Catch the HTTP 401 response in an interceptor.</li>
+          <li>If multiple API calls fail simultaneously with 401, pause them and queue them up in memory.</li>
+          <li>Execute a single call to <code>POST /auth/refresh</code> using the secure HttpOnly refresh token cookie.</li>
+          <li>Upon success, update the stored access token, replay all queued requests with the new token, and resume normal execution.</li>
+          <li>If the refresh token itself is expired or revoked, redirect the user to the login screen.</li>
+        </ol>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 19.1: Silent Token Refresh Queue Interceptor Flow</div>
+          <pre class="diagram-content">
+[ Component A: GET /profile ] ----> [ 401 Expired ] ---\
+[ Component B: GET /orders  ] ----> [ 401 Expired ] ----+---> [ Request Queue ] (Paused)
+[ Component C: GET /cart    ] ----> [ 401 Expired ] ---/             |
+                                                                     | (Only 1 refresh request!)
+                                                                     v
+                                                            POST /auth/refresh
+                                                                     |
+                                                          [ 200 OK: New Token ]
+                                                                     |
+                                                                     v
+                                                          [ Replay Queued Requests ]
+                                                          - GET /profile with new token -> 200 OK
+                                                          - GET /orders with new token  -> 200 OK
+                                                          - GET /cart with new token    -> 200 OK
+          </pre>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Production Axios Client)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// src/api/apiClient.js
+import axios from "axios";
+
+let inMemoryAccessToken = null; // Store access token in memory, NEVER localStorage!
+let isRefreshing = false;
+let failedQueue = [];
+
+export function setAccessToken(token) {
+  inMemoryAccessToken = token;
+}
+
+export function getAccessToken() {
+  return inMemoryAccessToken;
+}
+
+// Helper: Process pending queued requests once new token arrives
+function processQueue(error, token = null) {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+}
+
+export const apiClient = axios.create({
+  baseURL: "https://api.example.com",
+  withCredentials: true, // Sends HttpOnly refresh cookies automatically
+  headers: { "Content-Type": "application/json" }
+});
+
+// 1. Request Interceptor: Attach current access token
+apiClient.interceptors.request.use(
+  (config) => {
+    if (inMemoryAccessToken && !config.headers.Authorization) {
+      config.headers.Authorization = `Bearer ${inMemoryAccessToken}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// 2. Response Interceptor: Handle 401 and queue retries
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Check if error is 401 Unauthorized and not already retried
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      if (isRefreshing) {
+        // If refresh is already in-flight, push this request into queue
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject });
+        })
+          .then((token) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            return apiClient(originalRequest);
+          })
+          .catch((err) => Promise.reject(err));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        // Request new access token using HttpOnly cookie
+        const { data } = await axios.post(
+          "https://api.example.com/auth/refresh",
+          {},
+          { withCredentials: true }
+        );
+
+        const newAccessToken = data.accessToken;
+        setAccessToken(newAccessToken);
+
+        // Resume all queued promises with new token
+        processQueue(null, newAccessToken);
+
+        // Retry original request
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+        return apiClient(originalRequest);
+      } catch (refreshErr) {
+        processQueue(refreshErr, null);
+        setAccessToken(null);
+        // Token refresh failed: user session is dead, redirect to login
+        window.location.href = "/login?expired=true";
+        return Promise.reject(refreshErr);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Request Cancellation with AbortController</h2>
+        <p>
+          Uncancelled network requests cause two major problems in React:
+        </p>
+        <ol>
+          <li><strong>Memory Leaks / Warning Noise:</strong> Fetching data for a component that unmounts before the network request resolves.</li>
+          <li><strong>Asynchronous Race Conditions:</strong> A user rapidly clicks between tabs or types search queries; an earlier slow query resolves <em>after</em> a later fast query, overwriting the UI with outdated results.</li>
+        </ol>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { useState, useEffect } from "react";
+import { apiClient } from "../api/apiClient";
+
+export function UserSearch() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+
+    // 1. Create an AbortController instance for this specific search run
+    const controller = new AbortController();
+
+    async function searchUsers() {
+      setIsLoading(true);
+      try {
+        const response = await apiClient.get(`/users/search?q=${encodeURIComponent(query)}`, {
+          signal: controller.signal // Pass signal to Axios or fetch()
+        });
+        setResults(response.data);
+      } catch (err) {
+        // Axios wraps AbortErrors inside axios.isCancel(err)
+        if (err.name === "CanceledError" || err.name === "AbortError") {
+          console.log("[Search] Request cancelled due to new input.");
+        } else {
+          console.error("[Search] Network error:", err.message);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    searchUsers();
+
+    // 2. Cleanup: Cancel pending request if query changes or component unmounts!
+    return () => {
+      controller.abort();
+    };
+  }, [query]);
+
+  return (
+    &lt;div&gt;
+      &lt;input
+        type="text"
+        placeholder="Search users..."
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      /&gt;
+      {isLoading && &lt;span&gt;Searching...&lt;/span&gt;}
+      &lt;ul&gt;
+        {results.map((u) => (
+          &lt;li key={u.id}&gt;{u.name}&lt;/li&gt;
+        ))}
+      &lt;/ul&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Cross-Site Scripting (XSS) in React Applications</h2>
+        <p>
+          <strong>Cross-Site Scripting (XSS)</strong> occurs when an attacker tricks a web application into executing malicious JavaScript code within the context of an unsuspecting user's browser session. If executed, the attacker can steal credentials, hijack sessions, and impersonate the user.
+        </p>
+
+        <h3>4.1 React's Built-in Protection: Automatic String Escaping</h3>
+        <p>
+          By default, React escapes all string values embedded inside JSX before rendering them to the DOM:
+        </p>
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">const maliciousInput = "&lt;img src=x onerror=alert('XSS') /&gt;";
+
+// SAFE: React renders this as plain literal text in a DOM TextNode, NOT executable HTML:
+return &lt;div&gt;{maliciousInput}&lt;/div&gt;;
+// DOM output: &amp;lt;img src=x onerror=alert('XSS') /&amp;gt;</code></pre>
+        </div>
+
+        <h3>4.2 Where React Remains Vulnerable to XSS</h3>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Vulnerable Pattern</th>
+                <th>Why It Is Dangerous</th>
+                <th>Remediation Strategy</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong><code>dangerouslySetInnerHTML</code></strong></td>
+                <td>Directly inserts unescaped HTML strings into the real DOM. If content originates from user input or rich-text markdown, script tags or malicious <code>&lt;img onerror&gt;</code> payloads execute immediately.</td>
+                <td>Always sanitize input using <strong>DOMPurify</strong> before passing to <code>__html</code>: <code>DOMPurify.sanitize(dirtyHtml)</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>User-Supplied <code>&lt;a href&gt;</code> Links</strong></td>
+                <td>If a user profile allows setting a website URL and the attacker provides <code>javascript:alert(document.cookie)</code>, clicking the link executes JavaScript! React does <strong>not</strong> escape URL protocols!</td>
+                <td>Validate that URL protocols strictly start with <code>https://</code> or <code>http://</code> before rendering. Reject <code>javascript:</code> and <code>data:</code> URIs.</td>
+              </tr>
+              <tr>
+                <td><strong>Reflected Props in SSR</strong></td>
+                <td>Embedding server data directly in the HTML string without escaping: <code>&lt;script&gt;window.__PRELOADED_STATE__ = ${JSON.stringify(data)}&lt;/script&gt;</code> allows closing the tag with <code>&lt;/script&gt;</code>.</td>
+                <td>Serialize JSON safely using <code>serialize-javascript</code> which replaces <code>&lt;</code> with Unicode escapes (<code>\\u003C</code>).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Safe HTML Sanitization with DOMPurify)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import DOMPurify from "dompurify";
+
+// Helper for safe external link rendering
+export function SafeLink({ href, children }) {
+  // Disallow javascript: and data: schemes
+  const isSafeProtocol = /^https?:\/\//i.test(href);
+
+  if (!isSafeProtocol) {
+    return &lt;span className="broken-link"&gt;{children}&lt;/span&gt;;
+  }
+
+  return (
+    &lt;a href={href} target="_blank" rel="noopener noreferrer"&gt;
+      {children}
+    &lt;/a&gt;
+  );
+}
+
+// Safe Rich-Text Content Renderer
+export function SanitizedHtml({ dirtyHtml }) {
+  // DOMPurify strips out <script>, <iframe onerror>, and event handlers
+  const cleanHtml = DOMPurify.sanitize(dirtyHtml, {
+    ALLOWED_TAGS: ["b", "i", "em", "strong", "a", "p", "ul", "ol", "li", "code", "pre"],
+    ALLOWED_ATTR: ["href", "target", "rel"]
+  });
+
+  return &lt;div dangerouslySetInnerHTML={{ __html: cleanHtml }} /&gt;;
+}</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Content Security Policy (CSP): Defense in Depth</h2>
+        <p>
+          <strong>Content Security Policy (CSP)</strong> is an HTTP response header (or <code>&lt;meta&gt;</code> tag) that allows site operators to restrict the resources (JavaScript, CSS, Images, Fonts, API endpoints) that the browser is allowed to load and execute.
+        </p>
+        <p>
+          Even if an attacker successfully injects an XSS payload into your DOM, a strict CSP will prevent the browser from executing the inline script or exfiltrating data to an attacker-controlled domain!
+        </p>
+
+        <div class="code-block" data-lang="http">
+          <div class="code-header">
+            <span class="code-lang">http (Strict Production CSP Header)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-http">Content-Security-Policy: 
+  default-src 'self';
+  script-src 'self' 'nonce-rAnd0m12345';
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  img-src 'self' https://s3.amazonaws.com data:;
+  connect-src 'self' https://api.example.com wss://ws.example.com;
+  font-src 'self' https://fonts.gstatic.com;
+  frame-ancestors 'none';
+  base-uri 'self';
+  form-action 'self';</code></pre>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>CSP Directive</th>
+                <th>Security Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>default-src 'self'</code></td>
+                <td>Fallback restriction: only resources originating from the exact same origin are permitted unless explicitly overridden.</td>
+              </tr>
+              <tr>
+                <td><code>script-src 'self' 'nonce-...'</code></td>
+                <td>Blocks arbitrary inline scripts (e.g. <code>&lt;script&gt;eval(...)&lt;/script&gt;</code>). Only scripts bearing the cryptographically matching random <code>nonce</code> generated by the server are executed.</td>
+              </tr>
+              <tr>
+                <td><code>connect-src 'self' https://api...</code></td>
+                <td>Restricts URLs that can be loaded using <code>fetch()</code>, <code>XMLHttpRequest</code>, or <code>WebSocket</code>. Prevents stolen session tokens from being POSTed to an attacker server.</td>
+              </tr>
+              <tr>
+                <td><code>frame-ancestors 'none'</code></td>
+                <td>Completely blocks other websites from embedding your application inside an <code>&lt;iframe&gt;</code>, eliminating <strong>Clickjacking</strong> attacks (supersedes <code>X-Frame-Options: DENY</code>).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Cross-Site Request Forgery (CSRF) in SPAs</h2>
+        <p>
+          <strong>CSRF</strong> occurs when a malicious site tricks a victim's browser into executing an unwanted action on a trusted web application where the victim is currently authenticated.
+        </p>
+
+        <h3>6.1 Why Bearer Tokens are Immune to CSRF</h3>
+        <p>
+          If your SPA stores the Access Token in JavaScript memory and sends it manually via the <code>Authorization: Bearer &lt;token&gt;</code> header, the application is <strong>immune to CSRF</strong>! Browsers only automatically attach ambient credentials (cookies and HTTP basic auth) to cross-origin requests; browsers never automatically attach custom <code>Authorization</code> headers without explicit JavaScript instructions.
+        </p>
+
+        <h3>6.2 CSRF Defense for Cookie-Authenticated SPAs</h3>
+        <p>
+          If your application relies on session cookies, you must defend against CSRF:
+        </p>
+        <ol>
+          <li><strong>SameSite Cookies:</strong> Set <code>SameSite=Lax</code> or <code>SameSite=Strict</code> on all authentication cookies. Modern browsers will not attach the cookie to cross-origin POST requests.</li>
+          <li><strong>Custom Request Headers:</strong> Browsers require a CORS preflight check (OPTIONS) before allowing cross-origin requests with custom headers. Enforcing an <code>X-Requested-With: XMLHttpRequest</code> or <code>X-CSRF-Token</code> header on all state-mutating requests blocks standard form submissions from malicious origins.</li>
+        </ol>
+
+        <!-- Section 7 -->
+        <h2>7. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-tag">Exercise 19.1</span>
+            <span class="exercise-title">Build a Network Retry Wrapper with Exponential Backoff and Jitter</span>
+          </div>
+          <p>
+            <strong>Problem:</strong> Implement an asynchronous network utility <code>fetchWithRetry(url, options, maxRetries = 3)</code> that catches transient network failures or HTTP 503 errors and retries the request using exponential backoff with randomized jitter. Ensure client 4xx errors (e.g. 400 Bad Request, 404) are NOT retried.
+          </p>
+          <details class="solution-details">
+            <summary class="solution-toggle">View Complete Solution</summary>
+            <div class="solution-body">
+              <div class="code-block" data-lang="javascript">
+                <div class="code-header">
+                  <span class="code-lang">javascript</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-javascript">async function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function fetchWithRetry(url, options = {}, maxRetries = 3, baseDelayMs = 1000) {
+  let attempt = 0;
+
+  while (attempt &lt; maxRetries) {
+    try {
+      const response = await fetch(url, options);
+
+      // Do NOT retry client errors (400, 401, 403, 404)
+      if (response.status &gt;= 400 && response.status &lt; 500) {
+        return response;
+      }
+
+      // If server error (500, 502, 503), throw to trigger retry loop
+      if (!response.ok) {
+        throw new Error(`Server returned HTTP ${response.status}`);
+      }
+
+      return response; // Success
+    } catch (err) {
+      attempt++;
+      if (attempt &gt;= maxRetries) {
+        throw new Error(`Request failed after ${maxRetries} attempts: ${err.message}`);
+      }
+
+      // Calculate exponential backoff with randomized jitter
+      // Delay = base * 2^(attempt-1) + jitter (0-500ms)
+      const exponentialDelay = baseDelayMs * Math.pow(2, attempt - 1);
+      const jitter = Math.random() * 500;
+      const totalDelay = exponentialDelay + jitter;
+
+      console.warn(`[Retry] Attempt ${attempt} failed. Retrying in ${Math.round(totalDelay)}ms...`);
+      await wait(totalDelay);
+    }
+  }
+}</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 8: Interview Questions -->
+        <section class="qa-section" id="interview-questions">
+          <h2>8. Chapter-Specific Interview Questions and Answers</h2>
+          <p>
+            Master these 20 high-frequency interview questions covering client networking, authentication tokens, XSS mitigation, and CSP security.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">Why does fetch() not reject its promise on HTTP 404 or 500 status codes?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The native `fetch()` API's promise only rejects when a network failure occurs—such as a DNS lookup error, loss of internet connection, or CORS preflight refusal. From the browser's perspective, receiving an HTTP 404 or 500 response is a successful HTTP transaction because the remote server answered. To handle HTTP errors in `fetch()`, developers must explicitly check the `response.ok` boolean property (which is true for status codes 200–299) and throw an error manually."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">Where is the most secure place to store JWT Access Tokens and Refresh Tokens in a Single Page Application?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The industry-standard best practice is to store short-lived Access Tokens in **JavaScript memory** (in-memory variable or React/Redux state), and long-lived Refresh Tokens in an **HttpOnly, Secure, SameSite cookie**. Storing tokens in `localStorage` or `sessionStorage` exposes them to complete theft via any Cross-Site Scripting (XSS) vulnerability. An `HttpOnly` cookie cannot be read by JavaScript, protecting the refresh token from XSS, while in-memory access tokens are wiped when the tab closes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">How does a Silent Token Refresh Interceptor handle multiple concurrent API calls when an access token expires?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "If three requests fail with 401 at the same time, we must avoid triggering three simultaneous refresh calls. In the response interceptor, we use a boolean flag `isRefreshing` and a `failedQueue` array of pending promises. The first 401 sets `isRefreshing = true` and initiates the refresh call. The remaining 401 requests return new unresolved promises pushed to `failedQueue`. Once the refresh succeeds, we update the token, resolve all queued promises, and retry the original requests in parallel."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">How does AbortController cancel an in-flight network request? What happens on the wire?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "You pass `controller.signal` into `fetch()` or Axios. When `controller.abort()` is called, the browser immediately terminates the TCP socket or closes the HTTP/2 stream on the wire, rejecting the local JavaScript promise with an `AbortError`. The client stops downloading response bytes immediately, saving bandwidth and preventing outdated asynchronous state updates."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">How does React protect against Cross-Site Scripting (XSS) by default?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "React automatically escapes all string expressions rendered inside JSX (`<div>{userInput}</div>`). Instead of injecting raw markup into `innerHTML`, React creates a DOM Text Node (`document.createTextNode()`). Characters like `<`, `>`, `&`, and `"` are rendered as literal text glyphs rather than executable HTML elements, neutralizing script injection attempts."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What are the primary security risks of dangerouslySetInnerHTML, and how should it be sanitized?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`dangerouslySetInnerHTML` bypasses React's automatic escaping and writes directly to native `innerHTML`. If the HTML string includes untrusted user content, attackers can embed malicious `<script>` tags, `<img onerror=...>`, or `<iframe>` tags to execute arbitrary JavaScript in the victim's session. It must always be sanitized using a battle-tested library like `DOMPurify.sanitize(input)`, which strips dangerous tags and attributes before rendering."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">Can a user be exploited via XSS through an `<a href={url}>` tag even if dangerouslySetInnerHTML is never used?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Yes, absolutely. React escapes HTML elements, but it does NOT validate URL schemes in `href` attributes! If an application renders `<a href={userWebsite}>Visit Profile</a>` and an attacker supplies `javascript:alert(document.cookie)` or `data:text/html,...`, clicking that link will execute the attacker's script in the context of the application. You must validate URLs using regular expressions to ensure they strictly start with `http://` or `https://`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is Content Security Policy (CSP), and how does it act as defense-in-depth against XSS?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "CSP is an HTTP header that specifies an allowlist of trusted sources for browser resources (scripts, styles, connections, images). Even if an attacker finds an XSS vulnerability and injects an inline script, a strict CSP with `script-src 'self' 'nonce-...'` will block the browser from executing the injected inline script. Furthermore, `connect-src 'self'` prevents injected scripts from exfiltrating stolen session data to an external attacker-controlled domain."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is a CSP Nonce, and how does it prevent inline script execution?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A nonce ('number used once') is a cryptographically random, unguessable string generated by the server on every HTTP response. The server includes the nonce in the CSP header (`script-src 'nonce-RANDOM'`) and attaches it to legitimate inline scripts (`<script nonce='RANDOM'>`). When the browser renders the page, it executes only inline scripts whose `nonce` attribute exactly matches the header. Injected attacker scripts lack the dynamic nonce and are blocked."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">Why are SPAs utilizing Bearer tokens immune to CSRF, whereas cookie-authenticated SPAs are vulnerable?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "CSRF exploits the browser's behavior of automatically attaching cookies to cross-origin HTTP requests without user interaction. With Bearer tokens, the token is stored in memory and attached explicitly by JavaScript via the `Authorization` header. Because malicious external websites cannot force the user's browser to inject a custom `Authorization` header on cross-origin form submissions, CSRF attacks cannot succeed."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What does the SameSite cookie attribute do, and what is the difference between Lax and Strict?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`SameSite` controls whether cookies are sent with cross-site requests. `SameSite=Strict` completely blocks the cookie on any cross-site navigation, even if the user clicks a standard external link to your site. `SameSite=Lax` (the modern browser default) withholds cookies on cross-origin subrequests (like images or cross-site POST forms), but attaches them on top-level safe GET navigations (clicking a link from Google to your site)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is Clickjacking, and how do frame-ancestors and X-Frame-Options prevent it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Clickjacking is an attack where a malicious site embeds your application inside an invisible or transparent `<iframe>` overlaying an enticing button (e.g. 'Play Game'). When the user clicks, they unknowingly click an action inside your authenticated app (e.g. 'Transfer Funds'). We prevent Clickjacking by sending the HTTP header `X-Frame-Options: DENY` or the CSP directive `frame-ancestors 'none'`, which commands browsers to refuse rendering the site inside any iframe."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: Your React app renders user Markdown comments. How do you implement this securely without XSS?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "1. Use a parser like `react-markdown` which transforms markdown into React elements rather than raw HTML. 2. Configure `rehype-sanitize` or pipe the output through `DOMPurify`. 3. Disable raw HTML parsing inside markdown. 4. Override link renderers to enforce safe protocols (`https://`) and attach `rel='noopener noreferrer'`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is Subresource Integrity (SRI), and why is it important when loading third-party CDNs?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "SRI allows browsers to verify that files fetched from external CDNs (like scripts or styles) have not been tampered with or modified by an attacker. You provide a cryptographic hash in the `integrity` attribute: `<script src='https://cdn...' integrity='sha384-...' crossorigin='anonymous'>`. The browser hashes the downloaded script before execution; if the hash mismatches (indicating the CDN was compromised), the browser blocks execution."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">How do you prevent XSS when server-side rendering (SSR) initial Redux state into the HTML document?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "If you serialize state using standard `JSON.stringify()` inside an HTML script tag: `<script>window.__PRELOADED_STATE__ = ${JSON.stringify(state)}</script>`, an attacker who injected `</script><script>maliciousCode()</script>` into their username will break out of the script tag! To prevent this, use a serialization library like `serialize-javascript`, which replaces characters like `<` and `>` with their safe Unicode equivalents (e.g. `\\u003C`), rendering injection harmless."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What is the purpose of the rel='noopener noreferrer' attribute on external links?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "When opening external links with `target='_blank'`, the target page gets access to the opening page's `window.opener` object. A malicious site can execute `window.opener.location = 'phishing.com'`, redirecting the original tab without the user noticing ('Tabnabbing'). `noopener` instructs the browser to set `window.opener` to null, isolating the new tab. `noreferrer` also suppresses the HTTP `Referer` header."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is an Open Redirect vulnerability, and how can frontend applications mitigate it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An open redirect occurs when an application accepts an unvalidated user-controlled URL parameter (e.g. `/login?returnTo=https://evil.com`) and redirects the user after authentication. Attackers use this to craft authentic-looking login links that bounce users to phishing sites. Mitigate it by validating that `returnTo` URLs strictly start with a single forward slash `/` (relative path) and never start with `//` (protocol-relative) or external domains."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">Scenario: How would you detect when a client loses internet connectivity and display an offline banner in React?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I would create a custom hook `useOnlineStatus()` that reads `navigator.onLine` and subscribes to window `online` and `offline` event listeners. Inside a `useEffect`, update a state boolean when these events fire and remove listeners in cleanup. The root component renders an accessible notification banner when `isOnline` is false, pausing automated network polling until the connection is restored."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is the difference between connect-src and script-src in CSP?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`script-src` restricts the origins from which JavaScript code can be loaded and executed via `<script>` elements. `connect-src` restricts the destinations where the application can send and receive data via direct network requests, including `fetch()`, `XMLHttpRequest`, `WebSocket`, and `EventSource` connections."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">What is CORS Preflight (OPTIONS request), and what triggers it in frontend API requests?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A CORS preflight is an automatic HTTP `OPTIONS` request sent by the browser before the actual request to verify that the remote server allows the cross-origin call. It is triggered whenever a request is NOT a 'Simple Request'—specifically, if it uses methods other than GET/POST/HEAD (e.g. PUT, DELETE, PATCH), sends custom headers (like `Authorization` or `X-Requested-With`), or sets a `Content-Type` other than `application/x-www-form-urlencoded`, `multipart/form-data`, or `text/plain` (such as `application/json`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

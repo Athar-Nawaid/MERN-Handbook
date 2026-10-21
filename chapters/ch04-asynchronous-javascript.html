@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 4: Asynchronous JavaScript and the Event Loop | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to the JavaScript Event Loop, Call Stack, Macrotasks vs Microtasks, Promises, async/await internals, execution-order puzzles, AbortController, and concurrency management.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="4">
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART I — Programming Foundations and JavaScript</div>
+          <h1 class="chapter-title">Chapter 4: Asynchronous JavaScript and the Event Loop</h1>
+          <p class="chapter-lead">
+            The asynchronous heartbeat: Single-threaded non-blocking concurrency, Call Stack mechanics, Task (Macrotask) vs Microtask queues, Promise internals, async/await transpilation, race condition mitigation, AbortController, and tricky execution-order puzzles.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Core Asynchrony</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand why JavaScript is single-threaded and how the Event Loop enables non-blocking I/O.</li>
+            <li>Trace the exact prioritization order between the Call Stack, Microtask Queue, and Macrotask (Task) Queue.</li>
+            <li>Compare the Browser Event Loop with the Node.js libuv 6-phase Event Loop and understand <code>process.nextTick</code> vs <code>setImmediate</code>.</li>
+            <li>Solve complex execution-order interview puzzles with deterministic step-by-step reasoning.</li>
+            <li>Master Promise combinators: <code>Promise.all</code>, <code>Promise.allSettled</code>, <code>Promise.race</code>, and <code>Promise.any</code>.</li>
+            <li>Cancel in-flight network requests using modern <code>AbortController</code> and <code>AbortSignal</code>.</li>
+            <li>Implement an asynchronous concurrency limiter (Promise pool / p-limit pattern) from scratch.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Event Loop Architecture: Call Stack, Web APIs, and Queues</h2>
+        <p>
+          JavaScript is a <strong>single-threaded</strong> language: it has exactly one Call Stack and can execute only one instruction at any single instant in time. However, web browsers and Node.js are <strong>multithreaded host environments</strong>.
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++---------------------+                      +---------------------------------------+
+|     CALL STACK      |                      |           WEB APIS / LIBUV            |
+| (Single-Threaded)   |                      | (Multithreaded Background C++ Ops)    |
+|                     |                      |                                       |
+|  [ functionC() ]    |                      |  - DOM Events (click, keydown)        |
+|  [ functionB() ]    |                      |  - Timers (setTimeout, setInterval)   |
+|  [ main()      ]    |                      |  - Network requests (fetch, http)     |
++---------------------+                      |  - File System I/O (Node.js)          |
+          |                                  +---------------------------------------+
+          | (Stack Empty)                                        |
+          v                                                      v
++------------------------------------------------------------------------------------+
+|                                    EVENT LOOP                                      |
++------------------------------------------------------------------------------------+
+          ^                                                      |
+          |                                                      v
++---------------------+                      +---------------------------------------+
+|   MICROTASK QUEUE   |                      |           TASK (MACROTASK) QUEUE      |
+| (High Priority)     |                      | (Standard Priority)                   |
+|                     |                      |                                       |
+| - Promise callbacks |                      | - setTimeout / setInterval            |
+| - queueMicrotask()  |                      | - setImmediate (Node.js)              |
+| - process.nextTick  |                      | - I/O events & Network callbacks      |
+|   (Node.js Top)     |                      | - UI Rendering & PostMessage          |
++---------------------+                      +---------------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 4.1: The Complete JavaScript Event Loop Runtime Architecture</div>
+        </div>
+
+        <h3>The Golden Execution Loop Rule</h3>
+        <p>
+          The engine follows a strict, deterministic sequence on every cycle of the Event Loop:
+        </p>
+        <ol>
+          <li><strong>Execute Synchronous Code:</strong> Run the current script or function on the Call Stack until the stack is completely empty.</li>
+          <li><strong>Drain the ENTIRE Microtask Queue:</strong> If there are microtasks pending, dequeue and execute them one by one. <em>If a microtask enqueues another microtask, that new microtask runs immediately in the same cycle!</em> The engine will not touch macro tasks or paint pixels until the microtask queue is 100% drained.</li>
+          <li><strong>Render Viewport (Browser Only):</strong> If the browser window is scheduled for a screen refresh (usually every 16.6ms for 60Hz displays), run <code>requestAnimationFrame</code> callbacks and perform Style, Layout, and Paint.</li>
+          <li><strong>Execute Exactly ONE Macrotask:</strong> Dequeue and execute the oldest task from the Macrotask queue.</li>
+          <li><strong>Repeat:</strong> Return immediately to Step 2 to drain any new microtasks produced by that macrotask!</li>
+        </ol>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">🚨 Microtask Starvation Warning</div>
+          <p>
+            Because the microtask queue is drained completely before any macrotask or browser screen rendering can take place, infinitely chaining microtasks (e.g., <code>function loop() { Promise.resolve().then(loop); }</code>) will permanently starve the Event Loop, completely freezing the UI and locking up the thread!
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <h2>2. Browser vs Node.js Event Loop Differences</h2>
+        <p>
+          While the browser follows the HTML5 event-loop specification, Node.js implements its event loop via the <strong>libuv</strong> C library. Libuv divides each event loop tick into <strong>6 distinct phases</strong>:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Phase</th>
+                <th>Queue Monitored</th>
+                <th>Operations Executed</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>1. Timers</strong></td>
+                <td>Timer Heap</td>
+                <td>Executes callbacks scheduled by expired <code>setTimeout()</code> and <code>setInterval()</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>2. Pending Callbacks</strong></td>
+                <td>I/O Callback Queue</td>
+                <td>Executes I/O callbacks deferred from previous loop iterations (e.g., system-level errors like TCP connection refused).</td>
+              </tr>
+              <tr>
+                <td><strong>3. Idle, Prepare</strong></td>
+                <td>Internal</td>
+                <td>Used internally by libuv for housekeeping.</td>
+              </tr>
+              <tr>
+                <td><strong>4. Poll</strong></td>
+                <td>I/O Polling</td>
+                <td>Retrieves new I/O events (incoming network connections, disk reads); blocks and waits for I/O if no timers are scheduled.</td>
+              </tr>
+              <tr>
+                <td><strong>5. Check</strong></td>
+                <td>Check Queue</td>
+                <td>Executes callbacks scheduled explicitly by <strong><code>setImmediate()</code></strong>.</td>
+              </tr>
+              <tr>
+                <td><strong>6. Close Callbacks</strong></td>
+                <td>Close Queue</td>
+                <td>Executes close event handlers, e.g., <code>socket.on('close', ...)</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3><code>process.nextTick()</code> vs <code>setImmediate()</code> in Node.js</h3>
+        <ul>
+          <li><strong><code>process.nextTick()</code>:</strong> Technically <em>not</em> part of the libuv event loop. It belongs to the Node.js internal microtask queue. It runs immediately after the current operation finishes, before the event loop advances to <em>any</em> next phase!</li>
+          <li><strong><code>setImmediate()</code>:</strong> Belongs to the <strong>Check phase</strong> of the libuv event loop. It is designed to run after I/O callbacks have completed in the Poll phase.</li>
+        </ul>
+
+        <pre><code class="language-javascript">// Node.js Phase Comparison
+setTimeout(() => console.log('1. setTimeout'), 0);
+setImmediate(() => console.log('2. setImmediate'));
+process.nextTick(() => console.log('3. process.nextTick'));
+Promise.resolve().then(() => console.log('4. Promise.then'));
+
+// Output in Node.js:
+// 3. process.nextTick  (Highest priority microtask)
+// 4. Promise.then      (Standard microtask)
+// 1. setTimeout        (Timers phase)
+// 2. setImmediate      (Check phase)</code></pre>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <h2>3. Master Execution-Order Puzzles (With Traces)</h2>
+        <p>
+          Technical interviewers at Tier-1 companies love testing your mental model of the event loop with output prediction puzzles. Let's master the reasoning behind the classic puzzles.
+        </p>
+
+        <div class="exercise-box">
+          <div class="exercise-header">
+            <span>Puzzle 4.1: The Comprehensive Browser Event Loop Order</span>
+            <span class="meta-pill">High Frequency</span>
+          </div>
+          <div class="exercise-body">
+            <p>Predict the exact sequential console output of the following script:</p>
+            <pre><code class="language-javascript">console.log("1");
+
+setTimeout(() => {
+  console.log("2");
+  Promise.resolve().then(() => console.log("3"));
+}, 0);
+
+new Promise((resolve) => {
+  console.log("4");
+  resolve();
+  console.log("5");
+}).then(() => {
+  console.log("6");
+});
+
+Promise.resolve()
+  .then(() => {
+    console.log("7");
+    setTimeout(() => console.log("8"), 0);
+  })
+  .then(() => {
+    console.log("9");
+  });
+
+console.log("10");</code></pre>
+
+            <div class="exercise-solution">
+              <details>
+                <summary>Click to view step-by-step trace & solution</summary>
+                <div style="padding-top: 0.75rem;">
+                  <p><strong>Correct Output:</strong></p>
+                  <pre><code class="language-javascript">1
+4
+5
+10
+6
+7
+9
+2
+3
+8</code></pre>
+
+                  <p><strong>Step-by-Step Execution Trace:</strong></p>
+                  <ol>
+                    <li><code>console.log("1")</code> is synchronous. Prints <strong>1</strong>.</li>
+                    <li><code>setTimeout(..., 0)</code> registers a timer with the Web API. The timer callback is scheduled for the Macrotask Queue. [Macrotask Queue: [Task A (prints 2)]].</li>
+                    <li><code>new Promise(executor)</code>: The executor function runs <strong>synchronously</strong> during Promise construction! Prints <strong>4</strong>. <code>resolve()</code> changes promise state to fulfilled. Prints <strong>5</strong>. The <code>.then()</code> callback is enqueued to the Microtask Queue. [Microtask Queue: [Task 6]].</li>
+                    <li><code>Promise.resolve().then(...)</code>: Enqueues callback 7 to Microtask Queue. [Microtask Queue: [Task 6, Task 7]].</li>
+                    <li><code>console.log("10")</code> is synchronous. Prints <strong>10</strong>.</li>
+                    <li><strong>Call Stack is now empty!</strong> Engine drains the Microtask Queue:
+                      <ul>
+                        <li>Dequeues Task 6: Prints <strong>6</strong>.</li>
+                        <li>Dequeues Task 7: Prints <strong>7</strong>. Inside Task 7, <code>setTimeout</code> enqueues callback 8 to the Macrotask Queue [Macrotasks: [Task A, Task 8]]. The chained <code>.then()</code> callback 9 is immediately enqueued to the Microtask Queue! [Microtasks: [Task 9]].</li>
+                        <li>Microtask queue is not empty yet! Dequeues Task 9: Prints <strong>9</strong>.</li>
+                      </ul>
+                    </li>
+                    <li><strong>Microtask Queue is empty!</strong> Engine runs ONE Macrotask:
+                      <ul>
+                        <li>Dequeues Task A: Prints <strong>2</strong>. It enqueues Promise callback 3 to Microtask Queue.</li>
+                        <li>Before running the next macrotask, engine immediately drains Microtasks! Dequeues Task 3: Prints <strong>3</strong>.</li>
+                      </ul>
+                    </li>
+                    <li>Engine runs the next Macrotask:
+                      <ul>
+                        <li>Dequeues Task 8: Prints <strong>8</strong>.</li>
+                      </ul>
+                    </li>
+                  </ol>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <h2>4. Promises and Promise Combinators</h2>
+        <p>
+          A <code>Promise</code> is an object representing the eventual completion (or failure) of an asynchronous operation. A promise exists in one of three mutually exclusive states:
+        </p>
+        <ul>
+          <li><strong>Pending:</strong> Initial state, neither fulfilled nor rejected.</li>
+          <li><strong>Fulfilled:</strong> Operation completed successfully (\(\to\) calls <code>.then(onFulfilled)</code>).</li>
+          <li><strong>Rejected:</strong> Operation failed (\(\to\) calls <code>.catch(onRejected)</code>).</li>
+        </ul>
+
+        <h3>The 4 Promise Combinators Compared</h3>
+        <p>
+          When managing multiple concurrent asynchronous operations, modern JavaScript provides 4 static combinator methods on the <code>Promise</code> constructor:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Settlement Condition</th>
+                <th>Short-Circuit Behavior</th>
+                <th>Ideal Production Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong><code>Promise.all()</code></strong></td>
+                <td>Waits for <strong>ALL</strong> promises to fulfill.</td>
+                <td><strong>Fails fast:</strong> Rejects immediately if <em>any single</em> promise rejects.</td>
+                <td>Dependent parallel requests (e.g., fetch user profile, orders, and settings needed together for a dashboard).</td>
+              </tr>
+              <tr>
+                <td><strong><code>Promise.allSettled()</code></strong></td>
+                <td>Waits for <strong>ALL</strong> promises to settle (fulfill or reject).</td>
+                <td><strong>Never rejects.</strong> Returns an array of objects: <code>{ status: 'fulfilled', value }</code> or <code>{ status: 'rejected', reason }</code>.</td>
+                <td>Independent operations where partial success is acceptable (e.g., sending batch notification emails or uploading multi-file attachments).</td>
+              </tr>
+              <tr>
+                <td><strong><code>Promise.race()</code></strong></td>
+                <td>Settles as soon as the <strong>FIRST</strong> promise settles (fulfills OR rejects).</td>
+                <td>Resolves or rejects immediately with the outcome of the fastest promise.</td>
+                <td>Implementing request timeouts (racing a network fetch against a timeout promise).</td>
+              </tr>
+              <tr>
+                <td><strong><code>Promise.any()</code></strong></td>
+                <td>Resolves as soon as the <strong>FIRST</strong> promise <strong>fulfills</strong>.</td>
+                <td>Ignores rejections unless <em>every single</em> promise rejects, in which case it rejects with an <code>AggregateError</code>.</td>
+                <td>Querying redundant mirror servers, CDNs, or multiple cache replicas (fastest valid response wins).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <pre><code class="language-javascript">// Example: Implementing a Network Timeout with Promise.race
+function fetchWithTimeout(url, timeoutMs = 5000) {
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  return Promise.race([fetch(url), timeoutPromise]);
+}</code></pre>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <h2>5. Request Cancellation: Fetch and AbortController</h2>
+        <p>
+          Before the <strong><code>AbortController</code></strong> standard, once a network request or async operation was launched, there was no native way to cancel it at the socket level. <code>AbortController</code> provides a standardized signal mechanism to cancel operations.
+        </p>
+
+        <pre><code class="language-javascript">// Canceling a fetch request on user input change
+let currentController = null;
+
+async function handleSearch(query) {
+  // Abort any pending previous in-flight search request!
+  if (currentController) {
+    currentController.abort("User typed a newer character");
+  }
+
+  currentController = new AbortController();
+  const { signal } = currentController;
+
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`, { signal });
+    const data = await res.json();
+    renderSearchResults(data);
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      console.log('Previous search was aborted successfully:', err.message);
+    } else {
+      console.error('Real network failure:', err);
+    }
+  } finally {
+    if (currentController.signal === signal) {
+      currentController = null;
+    }
+  }
+}</code></pre>
+
+        <h3>Modern Timeout Cancellation: <code>AbortSignal.timeout()</code></h3>
+        <p>
+          In modern browsers and Node.js 18+, you no longer need manual <code>setTimeout</code> wrappers to implement request timeouts:
+        </p>
+        <pre><code class="language-javascript">// Built-in 3-second timeout signal
+const response = await fetch("https://api.example.com/data", {
+  signal: AbortSignal.timeout(3000)
+});</code></pre>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <h2>6. Concurrency Limiting: The Async Pool Pattern</h2>
+        <p>
+          A common production disaster is firing <code>Promise.all(urls.map(fetch))</code> across 1,000 URLs. This simultaneously opens 1,000 TCP sockets, exhausting file descriptors, triggering rate limits (<code>429 Too Many Requests</code>), or crashing the Node.js memory process.
+        </p>
+        <p>
+          We solve this by implementing a <strong>Concurrency Pool</strong> that limits simultaneous active tasks to a fixed maximum \(N\).
+        </p>
+
+        <div class="exercise-box">
+          <div class="exercise-header">
+            <span>Interview Implementation: Build a Concurrency Pool (`p-limit`)</span>
+            <span class="meta-pill">Senior Architectural Pattern</span>
+          </div>
+          <div class="exercise-body">
+            <pre><code class="language-javascript">/**
+ * Runs an array of task-generating functions with a concurrency limit.
+ * @param {Array<() => Promise<any>>} tasks
+ * @param {number} limit
+ * @returns {Promise<Array<any>>}
+ */
+async function asyncPool(tasks, limit = 3) {
+  const results = [];
+  const executing = new Set();
+
+  for (let i = 0; i < tasks.length; i++) {
+    const taskIndex = i;
+    // Execute task and wrap it to capture its completion
+    const promise = Promise.resolve().then(() => tasks[taskIndex]());
+    
+    // Store result at exact index
+    const wrappedPromise = promise.then(result => {
+      results[taskIndex] = result;
+      executing.delete(wrappedPromise); // Free up worker slot
+    });
+
+    executing.add(wrappedPromise);
+
+    // If active worker slots hit the limit, wait for the fastest to finish!
+    if (executing.size >= limit) {
+      await Promise.race(executing);
+    }
+  }
+
+  // Wait for all remaining active tasks to drain
+  await Promise.all(executing);
+  return results;
+}
+
+// Verification:
+const mockTask = (id, ms) => () => new Promise(res => {
+  console.log(`[START] Task ${id}`);
+  setTimeout(() => {
+    console.log(`[DONE] Task ${id}`);
+    res(`Result ${id}`);
+  }, ms);
+});
+
+const taskList = [
+  mockTask(1, 1000),
+  mockTask(2, 500),
+  mockTask(3, 300),
+  mockTask(4, 800),
+  mockTask(5, 200)
+];
+
+asyncPool(taskList, 2).then(results => {
+  console.log("All tasks finished successfully:", results);
+});</code></pre>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 7: Interview Questions and Answers -->
+        <section class="interview-section">
+          <h2>Interview Questions and Answers</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            20 high-yield interview questions testing your understanding of asynchronous execution, microtasks, Promise combinators, race conditions, and event loop internals.
+          </p>
+
+          <div class="qa-toolbar">
+            <div class="qa-filter-btns">
+              <button class="qa-filter-btn active" data-filter="all">All (20)</button>
+              <button class="qa-filter-btn" data-filter="beginner">Beginner</button>
+              <button class="qa-filter-btn" data-filter="intermediate">Intermediate</button>
+              <button class="qa-filter-btn" data-filter="advanced">Advanced</button>
+              <button class="qa-filter-btn" data-filter="scenario">Scenario</button>
+            </div>
+            <button class="qa-toggle-all" type="button">Expand All Answers</button>
+          </div>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What is the difference between synchronous and asynchronous code in JavaScript?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Synchronous code is blocking: each instruction executes sequentially, and subsequent lines must wait until the current operation finishes on the Call Stack. Asynchronous code is non-blocking: operations that take time (such as network requests, file reading, or timers) are delegated to the host environment (browser Web APIs or Node.js libuv), allowing the main JavaScript thread to continue executing remaining code immediately. When the async operation completes, its callback is scheduled onto a queue to be processed by the Event Loop."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">What is the difference between a Task (Macrotask) and a Microtask? Name examples of each.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The primary difference is priority and execution timing. When the Call Stack empties, the Event Loop will drain the ENTIRE Microtask queue before executing even a single Macrotask. Microtasks include Promise reactions (.then/.catch/.finally), queueMicrotask, MutationObserver, and process.nextTick in Node.js. Macrotasks include setTimeout, setInterval, setImmediate, I/O callbacks, and UI rendering."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">Compare `Promise.all` and `Promise.allSettled`. When would you choose one over the other?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`Promise.all` is fail-fast: if any promise in the array rejects, the returned promise immediately rejects with that error, discarding the results of the other promises. We choose it when operations are interdependent—such as loading the critical data needed to render a page. `Promise.allSettled` waits for all promises to finish regardless of success or failure, returning an array of settlement status objects. We choose it for independent batch operations where partial success is acceptable, such as sending bulk notification emails."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">How does `async/await` work under the hood? What does an async function actually return?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`async/await` is syntactic sugar built on top of Generator functions and Promises. An `async` function always returns a Promise, wrapping non-promise return values via `Promise.resolve()`. When the engine encounters an `await` expression, it pauses execution of that specific async function, pushes the remainder of the function into the Microtask Queue as a promise `.then()` continuation, and frees up the Call Stack to continue executing external code."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What happens if you forget to `await` a Promise inside an async function or forget to catch a rejection?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "If you forget to `await`, the function continues executing synchronously, holding the raw pending Promise object instead of the resolved value. If a Promise rejects without a `.catch()` handler or `try/catch` block, an `UnhandledPromiseRejection` event is triggered. In modern Node.js versions, unhandled rejections terminate the Node process with a non-zero exit code, crashing your backend server!"
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">What is the difference between `process.nextTick()` and `setImmediate()` in Node.js?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`process.nextTick()` is a Node-specific microtask that executes immediately after the current operation finishes, before the event loop advances to ANY libuv phase. `setImmediate()` is a macrotask that executes specifically during the 'Check' phase of the libuv event loop, right after I/O polling completes. Despite its name, `process.nextTick()` fires earlier than `setImmediate()`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">What is the difference between `Promise.race()` and `Promise.any()`?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`Promise.race()` resolves or rejects as soon as the FIRST promise settles, whether it succeeds or fails. `Promise.any()` resolves as soon as the FIRST promise FULFILLS; it completely ignores rejections until all input promises fail, in which case it rejects with an AggregateError containing all reasons. We use `Promise.race` for timeouts and `Promise.any` to fetch from redundant mirror endpoints."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">Scenario: What does this code print? Explain why `setTimeout(..., 0)` does not execute immediately.</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">console.log("A");
+setTimeout(() => console.log("B"), 0);
+console.log("C");</code></pre>
+                <div class="spoken-answer-box">
+                  <span class="spoken-answer-label">Spoken Interview Answer</span>
+                  <p>
+                    "Output is: A, C, B. `console.log('A')` runs synchronously. `setTimeout` delegates the timer to the host Web API, which immediately places callback B into the Macrotask Queue. Then `console.log('C')` runs synchronously. Even though the delay is 0ms, the callback cannot jump into the Call Stack until all synchronous code finishes and the Call Stack is completely clear."
+                  </p>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">What is the 4ms timer clamping rule in web browsers?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Under the HTML5 living standard, once a `setTimeout` nesting level reaches 5 or more (i.e. five recursive nested timeouts), the browser enforces a minimum clamping delay of 4 milliseconds, even if set to 0ms. Furthermore, modern browsers throttle timers down to 1000ms (1 second) or suspend them entirely when a tab is minimized or running in the background to preserve battery and CPU."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">Scenario: You have a race condition where a slow user query finishes AFTER a faster newer query, overwriting the UI with stale data. How do you resolve this?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I solve this using an `AbortController`. When the user initiates a new query, I invoke `abort()` on the previous controller's signal, canceling the in-flight network request at the browser socket level so its response never reaches the application layer. Alternatively, I track a monotonically increasing request ID or timestamp, discarding any response whose ID is older than the latest dispatched request."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Why should you avoid `forEach` with async/await? What should you use instead?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`Array.prototype.forEach` does not wait for promises returned by its callback. It fires all callbacks concurrently and returns immediately without awaiting them. If you want sequential execution, use a standard `for...of` loop with `await`. If you want parallel execution with awaiting, use `Promise.all(array.map(async fn))`."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">// BUG: Will NOT wait for items to process!
+items.forEach(async item => {
+  await saveToDb(item);
+});
+console.log('Done!'); // Logs BEFORE items are saved!
+
+// FIX 1: Sequential Execution
+for (const item of items) {
+  await saveToDb(item);
+}
+console.log('All saved sequentially!');
+
+// FIX 2: Parallel Execution
+await Promise.all(items.map(item => saveToDb(item)));
+console.log('All saved in parallel!');</code></pre>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">How do you create an asynchronous sleep or delay utility in JavaScript?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "By wrapping `setTimeout` inside a Promise: `const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))`. In an async function, you can then pause execution non-blockingly via `await sleep(1000)`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is "Callback Hell" (Pyramid of Doom), and what two fundamental problems did Promises solve?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Callback Hell is deeply nested callback functions resulting from sequential async operations, causing illegible pyramid-shaped code and painful error handling. Promises solved two critical issues: 1. Inversion of Control (instead of passing control of your callback to a third-party library, the function returns a promise you control), and 2. Composable Error Propagation (errors bubble down the promise chain to a centralized `.catch()` block)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the difference between `queueMicrotask(fn)` and `Promise.resolve().then(fn)`?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Both schedule a callback on the Microtask Queue. However, `queueMicrotask` is a dedicated, standardized API that does not allocate a Promise object in the heap, making it slightly more performant and cleaner when you don't need promise chaining or error capture. If an exception is thrown inside `queueMicrotask`, it is reported as an uncaught exception rather than an unhandled promise rejection."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">Scenario: Your service needs to retry a failing external HTTP API call up to 3 times with exponential backoff and jitter. How do you implement this?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I implement an async retry loop. If the call fails, I calculate a delay using formula `baseDelay * (2 ** attempt) + randomJitter`. The jitter randomizes the delay to prevent a thundering herd where all retrying clients hit the recovering server at the exact same millisecond. I await a sleep promise for the delay and retry until attempts are exhausted."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">async function retryWithBackoff(fn, retries = 3, baseDelay = 500) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === retries) throw err;
+      // Exponential backoff + full jitter
+      const expDelay = baseDelay * (2 ** attempt);
+      const jitter = Math.random() * expDelay;
+      const totalDelay = expDelay + jitter;
+      console.warn(`Attempt ${attempt + 1} failed. Retrying in ${Math.round(totalDelay)}ms...`);
+      await new Promise(r => setTimeout(r, totalDelay));
+    }
+  }
+}</code></pre>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">Can a Promise change its state from fulfilled to rejected or vice versa?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "No. A Promise is an immutable state machine. Once it transitions from Pending to either Fulfilled or Rejected, it is permanently 'settled'. Any subsequent calls to `resolve()` or `reject()` within the executor are silently ignored."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is Backpressure in Node.js streams and how does it prevent memory exhaustion?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Backpressure occurs when data is read from a source faster than the destination can write it (e.g., reading a 10GB file from disk and streaming it over a slow 3G network socket). If unchecked, unwritten chunks buffer in memory, crashing the Node process with Out-Of-Memory. When the destination buffer hits its `highWaterMark`, `writable.write()` returns false, signaling the readable stream to pause until the `drain` event fires."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is the return value of a `.then()` callback if you don't return anything?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In JavaScript, functions without an explicit return statement return `undefined`. Therefore, if a `.then()` callback does not return a value, it resolves the next chained promise with `undefined`. If it returns a primitive or object, it wraps it in `Promise.resolve(val)`. If it returns a promise, the next `.then()` waits for that returned promise to settle."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">Scenario: What is the output of this code snippet involving Promise chaining?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">Promise.resolve(1)
+  .then(x => x + 1)
+  .then(x => { throw new Error('Boom'); })
+  .catch(err => 10)
+  .then(x => x + 5)
+  .then(console.log);</code></pre>
+                <div class="spoken-answer-box">
+                  <span class="spoken-answer-label">Spoken Interview Answer</span>
+                  <p>
+                    "Output is: 15. The first then transforms 1 to 2. The second then throws an Error, skipping subsequent then handlers and jumping to the nearest `.catch()`. The `.catch()` catches the error and returns 10, effectively recovering the chain and returning a fulfilled promise with value 10. The next then receives 10, adds 5, and logs 15."
+                  </p>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">Explain the Node.js `EventEmitter` pattern. What happens if an 'error' event is emitted without a listener?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`EventEmitter` is an implementation of the Observer pattern in Node.js, providing `.on(event, listener)` to subscribe and `.emit(event, ...args)` to publish events synchronously to all registered callbacks. Uniquely, if an EventEmitter emits an 'error' event and NO listener has been attached to 'error', Node.js treats it as an uncaught exception, prints the stack trace, and immediately terminates the Node process!"
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

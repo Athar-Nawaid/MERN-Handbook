@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 18: React Architecture and Performance | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master production React architecture and performance: compound components, code-splitting with React.lazy and Suspense, memoization trade-offs, list virtualization, error boundaries, and React Profiler analysis.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="18">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART III — React and Redux Toolkit</div>
+          <h1 class="chapter-title">Chapter 18: React Architecture and Performance</h1>
+          <p class="chapter-lead">
+            Architecting maintainable, enterprise-scale frontend applications: advanced component design patterns, dynamic code-splitting with React.lazy and Suspense, memoization economics, list virtualization for massive datasets, production Error Boundaries, and deep React Profiler diagnostic analysis.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Performance Profiling</span>
+              <span class="meta-pill">Virtualization</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Master advanced component design patterns: <strong>Compound Components</strong>, Container/Presentational separation, and Slot composition.</li>
+            <li>Implement dynamic <strong>Code-Splitting</strong> using <code>React.lazy</code> and <code>&lt;Suspense&gt;</code> for route-based and interaction-based bundle shrinking.</li>
+            <li>Analyze the exact computational cost-benefit ratio of <code>React.memo</code>, <code>useMemo</code>, and <code>useCallback</code> to eliminate negative-ROI memoization.</li>
+            <li>Render 50,000+ row datasets at 60fps using <strong>Windowing and Virtualization</strong> principles (virtual scroll calculations).</li>
+            <li>Build resilient <strong>Error Boundaries</strong> to isolate UI crashes, capture component stack traces, and trigger automated telemetry.</li>
+            <li>Diagnose real-world render bottlenecks using the <strong>React DevTools Profiler</strong> (Flamegraph analysis, ranked views, and commit phase diagnostics).</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Component Architecture & Design Patterns</h2>
+        <p>
+          As frontend codebases grow beyond dozens of engineers, disorganized component structures create brittle "prop drilling hell", coupled business logic, and code duplication. Modern React leverages proven design patterns to maintain separation of concerns.
+        </p>
+
+        <h3>1.1 Container vs Presentational Components</h3>
+        <p>
+          Originally popularized by Dan Abramov, this pattern separates <strong>how things work</strong> from <strong>how things look</strong>:
+        </p>
+        <ul>
+          <li><strong>Presentational Components:</strong> Pure UI components. They receive data and callbacks via props, have zero awareness of Redux, APIs, or global state, and are easily testable in Storybook.</li>
+          <li><strong>Container Components:</strong> State orchestrators. They call API hooks, query Redux/Context, handle side-effects, and pass plain props down to presentational components.</li>
+        </ul>
+
+        <div class="callout callout-note">
+          <div class="callout-title">📌 Modern Evolution: Custom Hooks as Containers</div>
+          <p>
+            With the advent of React Hooks, the container pattern has largely transitioned from wrapper JSX components to <strong>Custom Hooks</strong>. Instead of creating a <code>UserProfileContainer.jsx</code> that wraps <code>UserProfileView.jsx</code>, developers extract data fetching and logic into <code>useUserProfile(userId)</code> and invoke it directly inside the component or a lean page coordinator.
+          </p>
+        </div>
+
+        <h3>1.2 The Compound Component Pattern</h3>
+        <p>
+          The <strong>Compound Component Pattern</strong> allows multiple components to work together seamlessly with shared implicit state, mirroring native HTML elements like <code>&lt;select&gt;</code> and <code>&lt;option&gt;</code>. It provides maximum flexibility to consumers without exposing internal state management.
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Compound Component Implementation)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// src/components/Accordion.jsx
+import React, { createContext, useContext, useState } from "react";
+
+// 1. Create Internal Context for implicit state sharing
+const AccordionContext = createContext(null);
+
+function useAccordion() {
+  const context = useContext(AccordionContext);
+  if (!context) {
+    throw new Error("Accordion sub-components must be rendered inside an <Accordion> provider.");
+  }
+  return context;
+}
+
+// 2. Main Container Component
+export function Accordion({ children, defaultOpenIndex = null }) {
+  const [openIndex, setOpenIndex] = useState(defaultOpenIndex);
+
+  const toggleIndex = (index) => {
+    setOpenIndex((prev) => (prev === index ? null : index));
+  };
+
+  return (
+    &lt;AccordionContext.Provider value={{ openIndex, toggleIndex }}&gt;
+      &lt;div className="accordion-root"&gt;{children}&lt;/div&gt;
+    &lt;/AccordionContext.Provider&gt;
+  );
+}
+
+// 3. Item Wrapper Component
+Accordion.Item = function AccordionItem({ index, children }) {
+  return &lt;div className="accordion-item" data-index={index}&gt;{children}&lt;/div&gt;;
+};
+
+// 4. Header / Trigger Component
+Accordion.Header = function AccordionHeader({ index, children }) {
+  const { openIndex, toggleIndex } = useAccordion();
+  const isOpen = openIndex === index;
+
+  return (
+    &lt;button
+      type="button"
+      className={`accordion-trigger ${isOpen ? "active" : ""}`}
+      onClick={() => toggleIndex(index)}
+      aria-expanded={isOpen}
+    &gt;
+      {children}
+      &lt;span className="chevron"&gt;{isOpen ? "▲" : "▼"}&lt;/span&gt;
+    &lt;/button&gt;
+  );
+};
+
+// 5. Collapsible Panel Body Component
+Accordion.Panel = function AccordionPanel({ index, children }) {
+  const { openIndex } = useAccordion();
+  if (openIndex !== index) return null;
+
+  return &lt;div className="accordion-panel"&gt;{children}&lt;/div&gt;;
+};
+
+// CONSUMER USAGE: Clean, declarative, and highly flexible JSX structure!
+export function FAQPage() {
+  return (
+    &lt;Accordion defaultOpenIndex={0}&gt;
+      &lt;Accordion.Item index={0}&gt;
+        &lt;Accordion.Header index={0}&gt;What is your refund policy?&lt;/Accordion.Header&gt;
+        &lt;Accordion.Panel index={0}&gt;Full refunds within 30 days of purchase.&lt;/Accordion.Panel&gt;
+      &lt;/Accordion.Item&gt;
+      &lt;Accordion.Item index={1}&gt;
+        &lt;Accordion.Header index={1}&gt;Do you support enterprise SSO?&lt;/Accordion.Header&gt;
+        &lt;Accordion.Panel index={1}&gt;Yes, SAML 2.0 and OIDC are fully supported.&lt;/Accordion.Panel&gt;
+      &lt;/Accordion.Item&gt;
+    &lt;/Accordion&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Dynamic Code-Splitting: React.lazy and Suspense</h2>
+        <p>
+          By default, single-page applications bundle all JavaScript into a single massive bundle (e.g., <code>bundle.js</code> of 3MB). When a user visits the landing page, the browser is forced to download, parse, and compile code for admin dashboards, charting libraries, and settings pages they may never view.
+        </p>
+        <p>
+          <strong>Code-Splitting</strong> leverages native ES dynamic imports (<code>import()</code>) and Webpack/Vite chunking to split code into separate downloadable chunks that load on-demand.
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 18.1: Monolithic Bundle vs On-Demand Route Chunks</div>
+          <pre class="diagram-content">
+[ Monolithic Bundle: 2.8 MB Initial Download (Slow First Contentful Paint) ]
++-------------------------------------------------------------------------+
+| Homepage (40KB) | Analytics Chart (850KB) | Admin Panel (1.2MB) | RichText (700KB) |
++-------------------------------------------------------------------------+
+
+========================================================================
+
+[ Code-Split Architecture: 95 KB Initial Download (Ultra-Fast FCP) ]
++------------------------+
+| Main App Shell (95 KB) | ----> Initial Fast Load!
++------------------------+
+            |
+            | User clicks "/analytics" route
+            v
++-------------------------------+
+| analytics-chunk.js (850 KB)   | ----> Loaded on-demand via Suspense!
++-------------------------------+
+          </pre>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// src/App.jsx
+import React, { Suspense, lazy } from "react";
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { LoadingSpinner } from "./components/LoadingSpinner";
+
+// Dynamic lazy imports: Chunks are only requested when route is visited!
+const Home = lazy(() => import("./pages/Home"));
+const AnalyticsDashboard = lazy(() => import("./pages/AnalyticsDashboard"));
+const AdminSettings = lazy(() => import("./pages/AdminSettings"));
+
+export function App() {
+  return (
+    &lt;BrowserRouter&gt;
+      &lt;nav&gt;
+        &lt;Link to="/"&gt;Home&lt;/Link&gt;
+        &lt;Link to="/analytics"&gt;Analytics&lt;/Link&gt;
+        &lt;Link to="/admin"&gt;Admin&lt;/Link&gt;
+      &lt;/nav&gt;
+
+      {/* Suspense boundary displays fallback UI while network fetches chunk */}
+      &lt;Suspense fallback={&lt;LoadingSpinner message="Loading view..." /&gt;}&gt;
+        &lt;Routes&gt;
+          &lt;Route path="/" element={&lt;Home /&gt;} /&gt;
+          &lt;Route path="/analytics" element={&lt;AnalyticsDashboard /&gt;} /&gt;
+          &lt;Route path="/admin" element={&lt;AdminSettings /&gt;} /&gt;
+        &lt;/Routes&gt;
+      &lt;/Suspense&gt;
+    &lt;/BrowserRouter&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Memoization Economics: React.memo, useMemo, and useCallback</h2>
+        <p>
+          A common anti-pattern in React codebases is indiscriminate memoization: wrapping every single function in <code>useCallback</code> and every calculation in <code>useMemo</code>. This often degrades rather than improves performance.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Optimization Tool</th>
+                <th>Underlying Cost (The "Overhead")</th>
+                <th>Legitimate High-ROI Use Case</th>
+                <th>Wasteful Anti-Pattern Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>React.memo(Component)</strong></td>
+                <td>Shallow comparison of every prop on every re-render; extra Fiber memory allocation.</td>
+                <td>Heavy presentational components that re-render frequently with identical props due to unrelated parent state changes (e.g. data grids, chart SVGs).</td>
+                <td>Wrapping tiny components (e.g. <code>&lt;Button&gt;Click&lt;/Button&gt;</code>) or components whose props change on every render anyway.</td>
+              </tr>
+              <tr>
+                <td><strong>useMemo(fn, deps)</strong></td>
+                <td>Dependency array allocation; shallow comparing every dependency on every render.</td>
+                <td>Computations taking \(&gt; 1\text{ms}\) (e.g. sorting or filtering 5,000 items), or stabilizing object references used in dependency arrays.</td>
+                <td>Memoizing primitive transformations (e.g. <code>useMemo(() => firstName + " " + lastName, [firstName, lastName])</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>useCallback(fn, deps)</strong></td>
+                <td>Closure allocation and dependency array comparison.</td>
+                <td>Passing callback functions down to <code>React.memo</code> child components or listing them in <code>useEffect</code> dependency arrays.</td>
+                <td>Passing callbacks to raw HTML elements (e.g. <code>&lt;button onClick={useCallback(...)}&gt;</code>); native DOM elements do not benefit from reference stability!</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. List Virtualization: Rendering 100,000 Items at 60fps</h2>
+        <p>
+          When rendering large collections of items (e.g., search results, logs, chat feeds, tabular data), mounting 10,000 DOM nodes simultaneously causes severe browser jank. The DOM tree consumes hundreds of megabytes of RAM, and any subsequent reflow or style recalculation freezes the main thread.
+        </p>
+        <p>
+          <strong>Virtualization (Windowing)</strong> solves this by rendering <strong>only the items currently visible inside the viewport</strong> (plus a small overscan buffer above and below). As the user scrolls, DOM nodes outside the window are recycled or unmounted.
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 18.2: Virtual Scroll Windowing Calculation</div>
+          <pre class="diagram-content">
+[ Total Dataset: 50,000 Items | Total Virtual Height: 50,000 * 40px = 2,000,000px ]
+
++-------------------------------------------------------------+
+| Virtual Spacer Top (Height = startIndex * itemHeight)       |
++-------------------------------------------------------------+  &lt;-- ScrollTop: 12,000px
+| Visible Item #300 (40px)                                    |
+| Visible Item #301 (40px)                                    |
+| Visible Item #302 (40px)    ===> VIEWPORT CONTAINER         |
+| Visible Item #303 (40px)         (Height: 400px, 10 items)  |
+| Visible Item #304 (40px)                                    |
+| Visible Item #305 (40px)                                    |
++-------------------------------------------------------------+  &lt;-- ScrollBottom: 12,400px
+| Virtual Spacer Bottom (Height = (total - endIndex) * height)|
++-------------------------------------------------------------+
+Total DOM nodes mounted: Exactly 15 nodes instead of 50,000 nodes!
+          </pre>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Zero-Dependency Virtual List)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import React, { useState, useRef } from "react";
+
+export function VirtualizedList({ items, itemHeight = 40, containerHeight = 400 }) {
+  const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef(null);
+
+  const totalItems = items.length;
+  const totalHeight = totalItems * itemHeight;
+
+  // Calculate visible index range based on current scroll position
+  const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - 2); // 2 overscan items
+  const visibleCount = Math.ceil(containerHeight / itemHeight) + 4;       // Buffer
+  const endIndex = Math.min(totalItems, startIndex + visibleCount);
+
+  const visibleItems = items.slice(startIndex, endIndex);
+  const offsetY = startIndex * itemHeight;
+
+  const handleScroll = (e) => {
+    setScrollTop(e.currentTarget.scrollTop);
+  };
+
+  return (
+    &lt;div
+      ref={containerRef}
+      onScroll={handleScroll}
+      style={{
+        height: containerHeight,
+        overflowY: "auto",
+        position: "relative",
+        border: "1px solid #ccc"
+      }}
+    &gt;
+      {/* Phantom height div to force native browser scrollbar */}
+      &lt;div style={{ height: totalHeight, width: "100%", position: "relative" }}&gt;
+        {/* Absolute container shifted to viewport offset */}
+        &lt;div
+          style={{
+            transform: `translateY(${offsetY}px)`,
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: 0
+          }}
+        &gt;
+          {visibleItems.map((item, index) => (
+            &lt;div
+              key={item.id}
+              style={{
+                height: itemHeight,
+                boxSizing: "border-box",
+                padding: "8px",
+                borderBottom: "1px solid #eee"
+              }}
+            &gt;
+              &lt;strong&gt;#{startIndex + index + 1}&lt;/strong&gt;: {item.label}
+            &lt;/div&gt;
+          ))}
+        &lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Resilient Error Boundaries & Production Crash Handling</h2>
+        <p>
+          In React, an unhandled JavaScript error thrown during rendering, lifecycle execution, or constructor calls will unmount the entire component tree, leaving the user with a blank white screen.
+        </p>
+        <p>
+          An <strong>Error Boundary</strong> is a React component that catches JavaScript errors anywhere in its child component tree, logs the error stack trace, and displays a fallback UI instead of crashing the application.
+        </p>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ What Error Boundaries Do NOT Catch</div>
+          <p>
+            By design, Error Boundaries do <strong>not</strong> catch errors inside:
+          </p>
+          <ul>
+            <li><strong>Event Handlers:</strong> (e.g. <code>onClick</code>). Use regular <code>try / catch</code> blocks inside event listeners.</li>
+            <li><strong>Asynchronous Code:</strong> (e.g. <code>setTimeout</code>, <code>requestAnimationFrame</code>, unhandled Promise rejections).</li>
+            <li><strong>Server-Side Rendering (SSR):</strong> During Node.js hydration passes.</li>
+            <li><strong>Errors inside the Error Boundary itself:</strong> (rather than its children).</li>
+          </ul>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// src/components/ErrorBoundary.jsx
+import React from "react";
+
+export class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  // 1. Static lifecycle: Update state so the next render shows fallback UI
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  // 2. Lifecycle: Log error information to monitoring service (Sentry, Datadog)
+  componentDidCatch(error, errorInfo) {
+    console.error("[ErrorBoundary] Caught rendering failure:", error);
+    console.error("[ErrorBoundary] Component Stack:", errorInfo.componentStack);
+
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+    }
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
+      return (
+        &lt;div className="error-fallback-card" role="alert"&gt;
+          &lt;h3&gt;Something went wrong in this module.&lt;/h3&gt;
+          &lt;p&gt;{this.state.error?.message || "An unexpected error occurred."}&lt;/p&gt;
+          &lt;button type="button" onClick={this.handleReset}&gt;
+            Try Again
+          &lt;/button&gt;
+        &lt;/div&gt;
+      );
+    }
+
+    return this.props.children;
+  }
+}</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Profiling with React DevTools: Flamegraph & Commits</h2>
+        <p>
+          Diagnosing performance bottlenecks requires empirical measurement rather than guesswork. The <strong>React DevTools Profiler</strong> records rendering metrics during user interactions.
+        </p>
+
+        <h3>6.1 Interpreting the Flamegraph Chart</h3>
+        <ul>
+          <li><strong>Bar Width:</strong> Represents how long the component took to render in milliseconds (render duration). Wide bars indicate heavy components.</li>
+          <li><strong>Bar Color:</strong>
+            <ul>
+              <li><strong>Grey:</strong> The component did not render during this commit (skipped due to <code>React.memo</code> or no prop/state change).</li>
+              <li><strong>Blue / Green:</strong> Rendered quickly with low compute time.</li>
+              <li><strong>Yellow / Red:</strong> High compute time during render phase; primary targets for optimization.</li>
+            </ul>
+          </li>
+          <li><strong>Commit History Bar:</strong> The timeline at top shows each React commit. Tall bars represent slow commits that may cause dropped frames (\(&gt; 16.6\text{ms}\) budget for 60fps).</li>
+        </ul>
+
+        <!-- Section 7 -->
+        <h2>7. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-tag">Exercise 18.1</span>
+            <span class="exercise-title">Build a Modal with Focus Trapping and Portal Architecture</span>
+          </div>
+          <p>
+            <strong>Problem:</strong> Create an accessible Modal component rendered via <code>ReactDOM.createPortal</code> into a dedicated <code>#modal-root</code> DOM container. Ensure the Escape key closes the modal, scrolling on <code>document.body</code> is locked while open, and cleanup restores background scrolling.
+          </p>
+          <details class="solution-details">
+            <summary class="solution-toggle">View Complete Solution</summary>
+            <div class="solution-body">
+              <div class="code-block" data-lang="javascript">
+                <div class="code-header">
+                  <span class="code-lang">javascript</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-javascript">import React, { useEffect } from "react";
+import ReactDOM from "react-dom";
+
+export function Modal({ isOpen, onClose, title, children }) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // 1. Prevent background page scroll while modal is active
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = "hidden";
+
+    // 2. Keyboard accessibility: Close on Escape key press
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalStyle;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const modalRoot = document.getElementById("modal-root") || document.body;
+
+  return ReactDOM.createPortal(
+    &lt;div className="modal-backdrop" onClick={onClose}&gt;
+      &lt;div
+        className="modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking content
+      &gt;
+        &lt;header className="modal-header"&gt;
+          &lt;h2 id="modal-title"&gt;{title}&lt;/h2&gt;
+          &lt;button type="button" onClick={onClose} aria-label="Close modal"&gt;
+            ×
+          &lt;/button&gt;
+        &lt;/header&gt;
+        &lt;div className="modal-body"&gt;{children}&lt;/div&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;,
+    modalRoot
+  );
+}</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 8: Interview Questions -->
+        <section class="qa-section" id="interview-questions">
+          <h2>8. Chapter-Specific Interview Questions and Answers</h2>
+          <p>
+            Master these 20 high-frequency interview questions covering React architecture, performance optimization, virtualization, and runtime error isolation.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is Code-Splitting in React, and how do React.lazy and Suspense implement it?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Code-splitting is the technique of breaking up a large bundled JavaScript application into smaller on-demand chunks. Instead of downloading the entire application upfront, the browser only fetches code needed for the active view. `React.lazy` wraps a dynamic ES6 `import()` statement, loading the component asynchronously when first rendered. `<Suspense>` wraps lazy components and renders a fallback UI (like a skeleton or spinner) while the browser downloads the network chunk."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is the Compound Component pattern, and what problem does it solve?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Compound Component pattern allows multiple components to coordinate and share state implicitly without explicit prop drilling, similar to HTML `<select>` and `<option>`. Using React Context under the hood, the parent container manages state (like active index or expansion status) and exposes modular sub-components like `Accordion.Header` and `Accordion.Panel`. This provides consumers complete control over UI layout and markup structure without exposing internal state logic."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">Why can indiscriminate use of React.memo, useMemo, and useCallback actually degrade performance?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Memoization is not free; it trades memory and CPU comparisons for saved execution time. Every memoized hook allocates closure memory and loops over previous dependency arrays using `Object.is` shallow checks on every single render. If a component is cheap to render or its props change on every tick anyway, the CPU overhead of checking dependencies exceeds the render cost itself. Memoization should only be applied where profiling demonstrates measurable render bottlenecks or where referential stability prevents expensive child tree re-renders."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">How does List Virtualization (Windowing) work, and when is it required?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "List virtualization renders only the small subset of DOM items visible inside the user's viewport (e.g. 15–20 rows) plus a small overscan buffer, instead of mounting thousands of nodes at once. Based on scroll position and item height, the virtualizer calculates the start and end indexes, positioning items using a CSS transform or absolute offsets while maintaining a phantom container to preserve native scrollbar size. It is required when rendering large datasets (over 500–1,000 items) to prevent browser memory spikes and layout thrashing."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is an Error Boundary, and what types of errors does it NOT catch?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An Error Boundary is a class component implementing `static getDerivedStateFromError` (to render fallback UI) and `componentDidCatch` (to log errors to telemetry). It catches JavaScript rendering errors in its child component tree, preventing a blank white screen. However, Error Boundaries do NOT catch errors in: 1. Event handlers (e.g. `onClick`), 2. Asynchronous callbacks (`setTimeout`, Promises), 3. Server-side rendering passes, or 4. Errors thrown inside the Error Boundary component itself."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">Why can't Error Boundaries be written as Functional Components with Hooks yet?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Because React has not yet introduced hook equivalents for the class lifecycle methods `getDerivedStateFromError` and `componentDidCatch`. These methods operate at the core Fiber reconciliation loop level during the render and commit error phases. To use Error Boundaries in functional architectures, developers write a reusable class boundary component or use battle-tested libraries like `react-error-boundary`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is ReactDOM.createPortal, and what are its primary use cases?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`ReactDOM.createPortal(children, domNode)` renders child elements into a different DOM subtree outside the parent component's DOM hierarchy, typically directly into `document.body` or a dedicated `#modal-root`. Its primary use cases are Modals, Tooltips, Toasts, and Dropdown Menus, where parent CSS properties like `overflow: hidden` or `z-index` stacking contexts would otherwise clip or obscure the overlay."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">Do events dispatched inside a React Portal bubble according to the DOM tree or the React Component tree?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Events dispatched inside a Portal bubble up according to the **React Component Tree**, NOT the native DOM tree! Even though a portal renders DOM nodes into `document.body`, a click event inside the portal will bubble up to its parent component in the JSX structure, allowing parent components to capture portal events via standard React event handlers."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">How do you interpret the Flamegraph in the React DevTools Profiler to identify render bottlenecks?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In the Profiler Flamegraph, the width of a bar represents the time spent rendering that component and its children, while color indicates self-render duration (grey means skipped, blue/green means fast, yellow/orange/red means slow). To find bottlenecks, look for wide yellow/red bars with long 'Self duration'. Clicking the component reveals what changed between renders ('props changed', 'hooks changed', or 'parent re-rendered'), allowing you to optimize props or wrap heavy leaves in `React.memo`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is Route-Based vs Component-Based Code Splitting?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Route-based splitting splits bundles at major page routes (e.g. `/dashboard`, `/settings`), loading page code only when the user navigates to that URL. Component-based splitting is more granular: it splits heavy interactive widgets within a single page (e.g. a rich Markdown editor, charting library, or PDF export viewer) so the bundle is fetched only when the user triggers that specific interaction, such as clicking an 'Open Editor' button."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the difference between Container and Presentational components?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Presentational components focus purely on visual rendering. They receive data and event handlers strictly through props and maintain no dependency on API clients or global stores, making them reusable and easy to test. Container components focus on business logic: fetching data, managing state, handling Redux dispatches, and passing processed props down to presentational components."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">Scenario: You wrap a child component in React.memo, but it still re-renders every time the parent updates. How do you troubleshoot this?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`React.memo` performs shallow reference equality (`===`) on props. If the child still re-renders, one or more props are receiving new object or function references on every render. Common culprits include: 1. Inline callback functions (`onClick={() => doSomething()}`), which should be stabilized with `useCallback`. 2. Inline object or array literals (`style={{ color: 'red' }}` or `items={[]}`), which should be stabilized with `useMemo`. 3. Passing dynamic `children` JSX."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is the difference between shallow equality and deep equality in React prop comparisons?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Shallow equality compares primitive values by value (`1 === 1`) and objects/arrays by memory address reference (`prevObj === nextObj`), without inspecting nested keys. Deep equality recursively inspects all nested properties. React uses shallow equality because it runs in O(1) time per prop. Deep equality can easily become an O(n) performance trap on large data structures, often costing more CPU cycles than re-rendering the component itself."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">How do you prefetch a code-split component before the user clicks on it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "You can trigger the dynamic import on speculative user intent, such as when the user hovers over a navigation link or button: `const prefetchDashboard = () => import('./pages/Dashboard'); <Link onMouseEnter={prefetchDashboard}>Dashboard</Link>`. Webpack or Vite will initiate the HTTP download immediately upon hover, ensuring the bundle is already cached in memory by the time the user actually clicks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is Layout Thrashing, and how does React help prevent it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Layout thrashing occurs when JavaScript repeatedly writes to the DOM and immediately reads layout properties (like `offsetHeight` or `getBoundingClientRect()`), forcing the browser to perform synchronous layout recalculations in a rapid loop. React prevents this by separating rendering into phases: all Virtual DOM computations run purely in memory during the render phase, and all real DOM mutations are batched and applied together during the commit phase."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What is the Render Props pattern, and why has it largely been replaced by Custom Hooks?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Render Props is a pattern where a component receives a function returning JSX as a prop (e.g. `<Mouse render={mouse => <Cat mouse={mouse} />} />`), sharing stateful logic across components. It was popular before React 16.8, but created 'wrapper hell' and nested indentation. Custom Hooks replaced render props because they extract and share stateful logic directly within flat component bodies without introducing extra wrapper nodes in the JSX tree."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">Scenario: You have a real-time trading dashboard receiving 100 stock price updates per second. The entire UI is stuttering. What architectural optimizations do you implement?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "1. Throttle state updates: Buffer incoming WebSocket messages in a mutable ref and flush updates to React state in 100ms or 200ms batches using `requestAnimationFrame`. 2. Colocate state: Isolate price updates into individual ticker cell components so a change in Apple's stock doesn't re-render Google's row. 3. Virtualize the table if displaying hundreds of rows. 4. Wrap row components in `React.memo` with custom comparison checks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is the difference between a controlled modal and an uncontrolled modal?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A controlled modal has its open/close state driven entirely by parent props (`isOpen={isOpen}` and `onClose={handleClose}`). An uncontrolled modal manages its own internal open/close state and exposes trigger buttons or imperative open/close methods via refs, useful for drop-in alert dialogs where parent state tracking is unnecessary."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is the 'Overscan' buffer in virtualized lists, and why is it necessary?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Overscan is the practice of rendering a small buffer of extra items (e.g. 3 to 5 items) immediately above and below the visible viewport window. Without overscan, rapid scrolling by the user causes visual flickering or blank white spaces because the browser displays the scrolled area before the JavaScript virtualization loop can compute and render the newly exposed rows."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you structure Error Boundaries in enterprise apps to prevent localized widget failures from crashing the entire page?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I use a multi-tiered Error Boundary architecture: 1. Root-Level Boundary: Catches catastrophic failures and renders a full-page 'Something went wrong' screen with a reload button. 2. Route-Level Boundary: Isolates failures to a specific page or tab so navigation remains functional. 3. Feature-Level Boundaries: Wrap independent volatile widgets (such as third-party payment widgets, complex charts, or rich text editors). If the chart crashes, only the chart displays a localized retry card while the rest of the dashboard remains interactive."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

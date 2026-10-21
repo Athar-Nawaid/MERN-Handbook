@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 21: PostgreSQL Data Modeling | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to PostgreSQL Data Modeling: 1NF-3NF normalization vs denormalization, UUIDv4 vs UUIDv7 vs BIGSERIAL, constraints, cascading, soft deletes, Row-Level Security (RLS), and zero-downtime migrations.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="21">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART IV — PostgreSQL and SQL</div>
+          <h1 class="chapter-title">Chapter 21: PostgreSQL Data Modeling</h1>
+          <p class="chapter-lead">
+            Production schema architecture: Relational Normalization (1NF–3NF) vs strategic denormalization, primary key trade-offs (BIGSERIAL vs UUIDv4 vs time-ordered UUIDv7), integrity constraints, soft deletion traps, Row-Level Security (RLS) multi-tenancy, and zero-downtime migration patterns.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Schema Design</span>
+              <span class="meta-pill">Row-Level Security</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Master the principles of <strong>Relational Normalization</strong> (1NF, 2NF, 3NF, BCNF) and recognize when controlled denormalization improves read throughput.</li>
+            <li>Evaluate <strong>Primary Key Strategies</strong>: auto-incrementing <code>IDENTITY</code> vs random <code>UUIDv4</code> vs time-sorted <code>UUIDv7</code> for B-Tree index health.</li>
+            <li>Implement PostgreSQL constraints: <code>CHECK</code>, <code>UNIQUE</code>, <code>NOT NULL</code>, and temporal <code>EXCLUDE USING gist</code> booking rules.</li>
+            <li>Configure cascading rules: <code>CASCADE</code>, <code>RESTRICT</code>, and <code>SET NULL</code> to preserve referential integrity.</li>
+            <li>Avoid common pitfalls of <strong>Soft Deletion</strong> (partial unique index conflicts, accidental data leaks, and GDPR compliance).</li>
+            <li>Architect enterprise multi-tenancy using PostgreSQL <strong>Row-Level Security (RLS)</strong> with automated tenant session variables.</li>
+            <li>Execute safe, <strong>Zero-Downtime Database Migrations</strong> using the expand-and-contract pattern and <code>CONCURRENTLY</code> index builds.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Database Normalization (1NF, 2NF, 3NF, and BCNF)</h2>
+        <p>
+          <strong>Normalization</strong> is the systematic process of organizing relational database tables to minimize data redundancy and eliminate insert, update, and delete anomalies.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Normal Form</th>
+                <th>Core Requirement</th>
+                <th>Common Violation &amp; Fix</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>First Normal Form (1NF)</strong></td>
+                <td>Each column must contain <strong>atomic (indivisible)</strong> values. No repeating groups or comma-separated lists. Each row must be uniquely identifiable.</td>
+                <td>Storing <code>"red,blue,green"</code> in a <code>colors</code> column. <em>Fix:</em> Create a separate <code>item_colors</code> relation with 1 color per row.</td>
+              </tr>
+              <tr>
+                <td><strong>Second Normal Form (2NF)</strong></td>
+                <td>Must be in 1NF, and all non-key attributes must be <strong>fully functionally dependent</strong> on the entire primary key (applies to composite primary keys).</td>
+                <td>In a table with composite key <code>(order_id, product_id)</code>, storing <code>customer_address</code>. <em>Fix:</em> Move customer address to an <code>orders</code> or <code>customers</code> table.</td>
+              </tr>
+              <tr>
+                <td><strong>Third Normal Form (3NF)</strong></td>
+                <td>Must be in 2NF, and no non-key attribute can depend on another non-key attribute (<strong>no transitive dependencies</strong>: \(X \to Y \to Z\)).</td>
+                <td>Storing <code>zip_code</code>, <code>city</code>, and <code>state</code> together in <code>employees</code>. Since <code>city</code> depends on <code>zip_code</code> (transitive), move zip lookup to a dedicated table.</td>
+              </tr>
+              <tr>
+                <td><strong>Boyce-Codd (BCNF)</strong></td>
+                <td>A stricter version of 3NF: for every functional dependency \(X \to Y\), \(X\) must be a superkey.</td>
+                <td>Handles edge cases where tables have overlapping composite candidate keys.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>1.1 When and Why to Denormalize</h3>
+        <p>
+          While 3NF prevents data inconsistency, heavily normalized databases require joining 6–10 tables to answer common read queries. In high-throughput read-heavy applications, <strong>strategic denormalization</strong> is justified:
+        </p>
+        <ul>
+          <li><strong>Pre-calculated Aggregate Counters:</strong> Storing <code>posts.likes_count</code> or <code>users.follower_count</code> to avoid running expensive <code>COUNT(*)</code> queries on every pageview.</li>
+          <li><strong>Immutable Snapshots:</strong> Copying <code>product_price</code> and <code>shipping_address</code> directly into an <code>order_items</code> row at checkout time so future price changes do not rewrite historical financial records.</li>
+          <li><strong>Materialized Views:</strong> Pre-computing complex reporting aggregations refreshed asynchronously via background cron jobs.</li>
+        </ul>
+
+        <!-- Section 2 -->
+        <h2>2. Primary Key Strategies: BIGSERIAL vs UUIDv4 vs UUIDv7</h2>
+        <p>
+          Selecting a Primary Key format is an architectural decision that impacts index performance, distributed generation, and security.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Key Strategy</th>
+                <th>Storage Size</th>
+                <th>B-Tree Index Fragmentation</th>
+                <th>Distributed Generation</th>
+                <th>Security / Enumeration</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>BIGINT (IDENTITY)</strong></td>
+                <td><strong>8 bytes</strong></td>
+                <td><strong>Zero Fragmentation:</strong> Monotonically increasing numbers always append to the rightmost leaf page of the B-Tree index.</td>
+                <td>Requires centralized database sequence coordinator; cannot generate offline.</td>
+                <td><strong>Vulnerable to Enumeration:</strong> Attackers can guess IDs sequentially (e.g. <code>/users/1</code>, <code>/users/2</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>UUIDv4 (Random)</strong></td>
+                <td><strong>16 bytes</strong></td>
+                <td><strong>Catastrophic Fragmentation:</strong> Random distribution causes random page splits across the entire B-Tree, degrading cache locality and write throughput.</td>
+                <td>Can be safely generated anywhere (client, microservice) with zero database coordination.</td>
+                <td><strong>High Security:</strong> 122 bits of random entropy make ID guessing mathematically impossible.</td>
+              </tr>
+              <tr>
+                <td><strong>UUIDv7 (Time-Ordered)</strong></td>
+                <td><strong>16 bytes</strong></td>
+                <td><strong>Zero Fragmentation:</strong> Starts with a 48-bit UNIX millisecond timestamp followed by random bytes. Monotonically sorted like BIGINT!</td>
+                <td>Can be generated by distributed microservices independently while retaining chronological ordering.</td>
+                <td><strong>High Security:</strong> Unpredictable random suffix prevents sequential enumeration.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (PostgreSQL Primary Key Definitions)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- Modern PostgreSQL standard for auto-incrementing integers (replaces legacy SERIAL)
+CREATE TABLE products (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  price NUMERIC(10, 2) NOT NULL
+);
+
+-- UUIDv4 implementation using built-in gen_random_uuid()
+CREATE TABLE accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_name VARCHAR(255) NOT NULL
+);
+
+-- UUIDv7 (PostgreSQL 17+ or via pg_uuidv7 extension)
+-- Encodes millisecond timestamp in first 48 bits for sorted B-Tree performance
+CREATE TABLE audit_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+  action VARCHAR(100) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Integrity Constraints and Referential Cascading</h2>
+        <p>
+          Relying exclusively on application code (e.g. Express or Mongoose) for data validation is an anti-pattern. Application bugs, bulk SQL imports, and concurrent race conditions will eventually corrupt data. PostgreSQL constraints provide <strong>engine-enforced invariants</strong>.
+        </p>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">CREATE TABLE bookings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE RESTRICT,
+  guest_email VARCHAR(255) NOT NULL,
+  price_per_night NUMERIC(10, 2) NOT NULL,
+  booking_dates DATERANGE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  -- 1. CHECK Constraint: Business validation at storage layer
+  CONSTRAINT chk_positive_price CHECK (price_per_night &gt; 0),
+  CONSTRAINT chk_valid_email CHECK (guest_email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'),
+
+  -- 2. EXCLUDE Constraint: Prevents overlapping bookings for the SAME room!
+  -- Requires btree_gist extension: CREATE EXTENSION btree_gist;
+  CONSTRAINT no_overlapping_room_bookings 
+    EXCLUDE USING gist (room_id WITH =, booking_dates WITH &amp;&amp;)
+);</code></pre>
+        </div>
+
+        <h3>3.1 Referential Integrity Cascading Rules</h3>
+        <ul>
+          <li><strong><code>ON DELETE CASCADE</code>:</strong> Automatically deletes all child rows when the referenced parent row is deleted. Use with caution for tightly owned children (e.g. deleting an <code>Order</code> deletes its <code>OrderItems</code>).</li>
+          <li><strong><code>ON DELETE RESTRICT</code> / <code>NO ACTION</code>:</strong> Rejects deletion of the parent row if any child references exist. (Default and safest for audit trails; e.g. cannot delete a <code>Customer</code> who has existing <code>Orders</code>).</li>
+          <li><strong><code>ON DELETE SET NULL</code>:</strong> Retains child rows but sets foreign key column to <code>NULL</code> (e.g. if a <code>User</code> is deleted, set <code>posts.author_id = NULL</code>).</li>
+        </ul>
+
+        <!-- Section 4 -->
+        <h2>4. Soft Deletes: Best Practices and Hidden Traps</h2>
+        <p>
+          <strong>Soft Deletion</strong> means adding a <code>deleted_at TIMESTAMP WITH TIME ZONE NULL</code> column rather than physically executing <code>DELETE FROM</code>. While valuable for recovery and auditing, soft deletion introduces severe architectural hazards:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Soft Delete Hazard</th>
+                <th>Why It Breaks</th>
+                <th>PostgreSQL Architectural Solution</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Unique Constraint Collisions</strong></td>
+                <td>A table with <code>UNIQUE (email)</code> blocks a user from re-registering with <code>alice@test.com</code> if an old soft-deleted row already contains that email.</td>
+                <td>Use a <strong>Partial Unique Index</strong>: <code>CREATE UNIQUE INDEX uq_active_user_email ON users (email) WHERE deleted_at IS NULL;</code></td>
+              </tr>
+              <tr>
+                <td><strong>Query Pollution / Accidental Leaks</strong></td>
+                <td>Every single query across your entire codebase must remember to append <code>WHERE deleted_at IS NULL</code>. Forgetting it leaks deleted data.</td>
+                <td>Create a default view (<code>active_users</code>) or enforce a PostgreSQL <strong>Row-Level Security (RLS)</strong> policy that filters out soft-deleted rows automatically.</td>
+              </tr>
+              <tr>
+                <td><strong>Foreign Key Cascades Break</strong></td>
+                <td>Foreign keys do not recognize soft deletes; soft-deleting a parent <code>organization</code> leaves child <code>users</code> visibly active unless manual cascading updates are executed.</td>
+                <td>Implement database triggers or service-layer cascading updates.</td>
+              </tr>
+              <tr>
+                <td><strong>GDPR / CCPA Non-Compliance</strong></td>
+                <td>The "Right to be Forgotten" requires true data erasure. Soft-deleted rows holding PII still violate GDPR laws.</td>
+                <td>Anonymize PII upon soft-delete (e.g., set <code>email = 'deleted-' || id || '@anonymized.local'</code>) or hard-delete after a 30-day grace period.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Multi-Tenancy Architecture and Row-Level Security (RLS)</h2>
+        <p>
+          Multi-tenant SaaS architectures isolate data between different corporate accounts or organizations.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Multi-Tenancy Model</th>
+                <th>Data Isolation</th>
+                <th>Operational Complexity</th>
+                <th>Cost Efficiency</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Database per Tenant</strong></td>
+                <td>Absolute physical isolation.</td>
+                <td>Extreme complexity: running 5,000 database instances or running migrations across 5,000 DBs.</td>
+                <td>Expensive; high resource idle waste.</td>
+              </tr>
+              <tr>
+                <td><strong>Schema per Tenant</strong></td>
+                <td>Logical isolation within single DB.</td>
+                <td>High complexity: PostgreSQL connection pools and ORMs struggle with thousands of schemas.</td>
+                <td>Moderate.</td>
+              </tr>
+              <tr>
+                <td><strong>Shared Schema with Tenant ID + RLS</strong></td>
+                <td>Engine-enforced cryptographic isolation in single table.</td>
+                <td>Low complexity: single database schema, unified migrations, standard connection pooling.</td>
+                <td><strong>Optimal:</strong> Maximum hardware sharing and lowest cloud cost.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>5.1 Implementing Row-Level Security (RLS) in PostgreSQL</h3>
+        <p>
+          PostgreSQL <strong>Row-Level Security (RLS)</strong> transparently injects tenant-filtering predicates into every query executed by the database engine, making tenant data leakage impossible even if a junior developer writes <code>SELECT * FROM documents</code> without a <code>WHERE</code> clause!
+        </p>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (PostgreSQL Row-Level Security Setup)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- 1. Create multi-tenant table
+CREATE TABLE documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  content TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. ENABLE Row-Level Security on the table
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+
+-- 3. Define RLS Policy tied to session variable 'app.current_tenant_id'
+CREATE POLICY tenant_isolation_policy ON documents
+  FOR ALL
+  USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+  WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+
+-- =====================================================================
+-- APPLICATION EXECUTION PATTERN (Inside Express Database Middleware):
+-- =====================================================================
+-- When an Express request arrives from Tenant 'a0eebc99-...':
+BEGIN;
+-- Set session-scoped tenant context (local to this transaction only):
+SET LOCAL app.current_tenant_id = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
+-- Even if developer forgets WHERE tenant_id = ..., PostgreSQL ENFORCES it!
+SELECT * FROM documents; -- Only returns documents belonging to Tenant 'a0eebc99-...'!
+COMMIT;</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Zero-Downtime Database Migrations</h2>
+        <p>
+          Running uncoordinated DDL migrations (like <code>ALTER TABLE users DROP COLUMN phone</code> or <code>ALTER TABLE orders ADD COLUMN status VARCHAR NOT NULL DEFAULT 'PENDING'</code>) on high-traffic production databases will lock tables for minutes or crash running application pods that expect the old schema.
+        </p>
+
+        <h3>6.1 The Expand-and-Contract Migration Pattern</h3>
+        <p>
+          Zero-downtime schema evolution decouples database migrations from code deployments into four distinct, backward-compatible phases:
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 21.1: Expand and Contract Migration Lifecycle</div>
+          <pre class="diagram-content">
+[ Phase 1: EXPAND (Database Migration) ]
+- Add new column as NULLABLE (e.g. full_name VARCHAR).
+- Both old (first_name, last_name) and new (full_name) columns exist simultaneously.
+
+[ Phase 2: WRITE TO BOTH (Application Deployment v2) ]
+- Application writes to both old and new columns.
+- Reads fall back: full_name || (first_name || ' ' || last_name).
+
+[ Phase 3: BACKFILL (Asynchronous Data Migration) ]
+- Run background batch job: UPDATE users SET full_name = first_name || ' ' || last_name WHERE full_name IS NULL.
+- Apply NOT NULL constraint after backfill completes.
+
+[ Phase 4: CONTRACT (Application Deployment v3 &amp; DB Cleanup) ]
+- Deploy application v3: reads/writes exclusively from full_name.
+- Execute final DB cleanup: ALTER TABLE users DROP COLUMN first_name, DROP COLUMN last_name.
+          </pre>
+        </div>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">⚡ Golden Rules for Safe PostgreSQL Migrations</div>
+          <ul>
+            <li><strong>Always create indexes concurrently:</strong> <code>CREATE INDEX CONCURRENTLY</code> builds indexes without acquiring an exclusive table write lock.</li>
+            <li><strong>Always set statement timeouts:</strong> <code>SET statement_timeout = '5s';</code> prevents migration locks from queueing behind long-running queries and causing connection pool exhaustion.</li>
+            <li><strong>Never add NOT NULL without DEFAULT in one step:</strong> In older PostgreSQL versions, this rewrote the entire physical table. In modern PostgreSQL, add column with default, or backfill first then add constraint <code>VALIDATE CONSTRAINT</code>.</li>
+          </ul>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-tag">Exercise 21.1</span>
+            <span class="exercise-title">Design a Normalized E-Commerce Order System with Partial Unique Indexes</span>
+          </div>
+          <p>
+            <strong>Problem:</strong> Write production DDL for a normalized order system including <code>customers</code>, <code>orders</code>, and <code>order_items</code>. Include soft deletion with partial unique indexes on customer email, ensure total prices cannot be negative, and enforce immutable historical item prices.
+          </p>
+          <details class="solution-details">
+            <summary class="solution-toggle">View Complete Solution</summary>
+            <div class="solution-body">
+              <div class="code-block" data-lang="sql">
+                <div class="code-header">
+                  <span class="code-lang">sql</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-sql">-- 1. Customers Table with Soft Deletion & Partial Unique Index
+CREATE TABLE customers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) NOT NULL,
+  full_name VARCHAR(100) NOT NULL,
+  deleted_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Partial unique index ensures email uniqueness ONLY among active accounts!
+CREATE UNIQUE INDEX uq_active_customer_email 
+  ON customers (email) 
+  WHERE deleted_at IS NULL;
+
+-- 2. Orders Table
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id UUID NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+  status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+  total_amount NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  
+  CONSTRAINT chk_positive_total CHECK (total_amount &gt;= 0)
+);
+
+-- 3. Order Items Table (Immutable historical price snapshot)
+CREATE TABLE order_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL,
+  unit_price NUMERIC(10, 2) NOT NULL, -- Historical snapshot at purchase time
+  quantity INT NOT NULL,
+
+  CONSTRAINT chk_positive_quantity CHECK (quantity &gt; 0),
+  CONSTRAINT chk_positive_price CHECK (unit_price &gt;= 0),
+  CONSTRAINT uq_order_product UNIQUE (order_id, product_id)
+);</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 8: Interview Questions -->
+        <section class="qa-section" id="interview-questions">
+          <h2>8. Chapter-Specific Interview Questions and Answers</h2>
+          <p>
+            Master these 20 high-frequency interview questions covering PostgreSQL data modeling, keys, constraints, soft deletion, and multi-tenancy.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the difference between 1NF, 2NF, and 3NF?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "1NF requires that all column values are atomic (no comma-separated lists or arrays) and each row is unique. 2NF requires 1NF plus eliminating partial dependencies: every non-key column must depend on the entire composite primary key, not just part of it. 3NF requires 2NF plus eliminating transitive dependencies: non-key columns must depend strictly on the primary key, never on other non-key columns (e.g. moving city/state out of an address table into a zip code lookup)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">Why does random UUIDv4 cause B-Tree index fragmentation, and why is UUIDv7 superior?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "B-Tree indexes maintain sorted leaf pages. UUIDv4 is completely random, so new inserts are scattered randomly across the entire index tree. When a leaf page fills up, PostgreSQL must perform expensive 'page splits', leaving index pages half-empty, bloating disk usage, and destroying memory cache locality. UUIDv7 prefixes the identifier with a 48-bit millisecond UNIX timestamp. Because timestamps increase monotonically, new UUIDv7 rows always append cleanly to the rightmost leaf of the B-Tree, completely preventing fragmentation."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">How do you solve the unique constraint conflict when implementing soft deletion?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "If a table has a regular `UNIQUE(email)` constraint, soft-deleting a row still retains `alice@test.com` in the table, blocking a future user from registering with that email. The solution is a PostgreSQL Partial Unique Index: `CREATE UNIQUE INDEX uq_active_email ON users(email) WHERE deleted_at IS NULL;`. This enforces uniqueness exclusively among active records, allowing any number of deleted records to share the same email."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is Row-Level Security (RLS) in PostgreSQL, and how does it prevent cross-tenant data leaks?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Row-Level Security allows database administrators to attach security policies to tables. When enabled, PostgreSQL automatically rewrites incoming SQL queries at the engine planner level to inject policy conditions—such as `WHERE tenant_id = current_setting('app.current_tenant')::uuid`. Even if application code forgets to include a `WHERE tenant_id = ...` filter, the database engine enforces tenant isolation at the kernel level, completely eliminating cross-tenant data leaks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is the difference between ON DELETE CASCADE, ON DELETE RESTRICT, and ON DELETE SET NULL?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`ON DELETE CASCADE` automatically deletes all child rows when the parent row is deleted. `ON DELETE RESTRICT` aborts the deletion if any child rows reference the parent, preventing accidental orphan records. `ON DELETE SET NULL` keeps the child rows intact but overwrites the foreign key column with NULL."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">Explain the Expand-and-Contract pattern for zero-downtime database migrations.</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Expand-and-Contract pattern decouples schema evolution into backward-compatible stages: 1. Expand: Add the new column as nullable in the database. 2. Dual-Write: Deploy application v2 that writes to both old and new columns, reading from the new column with fallback. 3. Backfill: Run an async background job migrating historical rows. 4. Contract: Deploy application v3 reading/writing exclusively to the new column, and drop the old column in a final migration."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">Why must you use CREATE INDEX CONCURRENTLY in production PostgreSQL?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A standard `CREATE INDEX` acquires an `ACCESS EXCLUSIVE` lock on the table, blocking all writes (`INSERT`, `UPDATE`, `DELETE`) until the index build finishes. On large tables, this lock can last for minutes or hours, causing production downtime. `CREATE INDEX CONCURRENTLY` performs two table scans without acquiring exclusive write locks, allowing writes to continue uninterrupted while the index is built in the background."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What are Exclusion Constraints (EXCLUDE USING gist), and when should you use them over UNIQUE constraints?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Standard `UNIQUE` constraints only test for exact equality (`=`). Exclusion constraints use GiST index operators to enforce generalized comparison invariants—most notably range overlaps (`&&`). Their classic use case is scheduling and booking systems: `EXCLUDE USING gist (room_id WITH =, booking_dates WITH &&)`. This guarantees at the database level that no two bookings for the same room can ever overlap in time, eliminating double-booking race conditions."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is the difference between Surrogate Keys and Natural Keys?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Natural Key is an attribute existing in the real-world business domain that is inherently unique (e.g. Social Security Number, ISBN, or email). A Surrogate Key is an artificially generated, meaningless identifier (e.g. an auto-incrementing `BIGINT` or `UUID`). Surrogate keys are widely preferred because natural keys frequently change in the real world (e.g. users change emails), which cascades costly updates across all foreign key tables."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">Why should monetary values never be stored using FLOAT or DOUBLE PRECISION?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`FLOAT` and `DOUBLE` use IEEE 754 binary floating-point representation, which cannot precisely represent fractional decimal numbers like 0.1 or 0.05. Performing arithmetic on floats accumulates rounding errors (e.g. `0.1 + 0.2 = 0.30000000000000004`), leading to financial discrepancies. Money must always be stored using exact numeric types: PostgreSQL `NUMERIC(12, 2)` or as integer cents (`BIGINT`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is Boyce-Codd Normal Form (BCNF), and how does it differ from 3NF?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "BCNF is a stricter variant of 3NF. Under 3NF, a dependency `X -> Y` is permitted if `X` is a candidate key OR `Y` is a prime attribute (part of any candidate key). BCNF removes that exception: for EVERY non-trivial dependency `X -> Y`, `X` MUST be a candidate superkey. BCNF addresses tables with multiple overlapping composite candidate keys."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">How do you implement an immutable audit log table in PostgreSQL without application overhead?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I implement a PostgreSQL `AFTER INSERT OR UPDATE OR DELETE` trigger on the target table. Inside the trigger function, capture `TG_OP`, the current user `SESSION_USER`, timestamp, and serialize `OLD` and `NEW` records to `JSONB` via `to_jsonb(OLD)` and `to_jsonb(NEW)`. Insert this delta into an `audit_logs` table. To make it strictly append-only, revoke `UPDATE` and `DELETE` privileges on `audit_logs` from the application database role."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: You need to add a NOT NULL column with a DEFAULT value to a table with 50 million rows in PostgreSQL 10 vs modern PostgreSQL 11+. What are the locking risks?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In PostgreSQL 10 and older, adding a column with a default value required physically rewriting all 50 million rows on disk, taking an exclusive table lock that caused prolonged downtime. Since PostgreSQL 11, adding a column with a constant default stores the default value in the system catalog metadata without rewriting rows, executing in milliseconds. However, always set `SET statement_timeout = '2s'` before running DDL to prevent lock queue pileups."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is a Junction Table, and what constraints should it contain?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Junction Table (or join table) bridges a Many-to-Many relationship between two tables (e.g. `users` and `roles` via `user_roles`). It should contain foreign keys to both parent tables with `ON DELETE CASCADE`. Crucially, it must have a composite primary key or unique constraint on `(user_id, role_id)` to prevent duplicate association links."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">Why does PostgreSQL's GENERATED ALWAYS AS IDENTITY replace SERIAL?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`SERIAL` is a legacy pseudo-type that created an implicit sequence and set a `DEFAULT nextval('seq')`. Because it was just a default, users could accidentally insert explicit IDs, causing sequence desynchronization errors later. `GENERATED ALWAYS AS IDENTITY` conforms to the SQL standard, manages the sequence internally, and rejects manual ID insertions unless overridden with `OVERRIDING SYSTEM VALUE`, making it much safer."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What is the difference between CHAR, VARCHAR, and TEXT in PostgreSQL?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`CHAR(n)` pads strings with trailing spaces to fixed length `n`, wasting space and causing string comparison quirks. `VARCHAR(n)` stores variable-length strings up to length `n`. `TEXT` stores arbitrary variable-length strings. Under PostgreSQL's internal storage engine (TOAST), `VARCHAR` and `TEXT` have identical performance characteristics; `VARCHAR(n)` merely adds a length validation check."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">Scenario: An order checkout system needs to ensure product prices cannot change after an order is completed. How do you model this?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Never calculate order totals dynamically by joining the current `products` table! The `order_items` table must store an explicit `unit_price NUMERIC(10, 2)` column that acts as an immutable point-in-time snapshot of the price at the moment of checkout. Even if the merchant changes the product's catalog price tomorrow, the historical order item record remains fixed."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What are CHECK constraints, and can a CHECK constraint reference columns from other tables?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A `CHECK` constraint evaluates a Boolean expression that must be satisfied for any inserted or updated row (e.g. `CHECK (age >= 18)`). By SQL standard design, a `CHECK` constraint can ONLY reference columns within the same row of that specific table; it cannot reference other rows or query other tables. Cross-table validation must be implemented via triggers or foreign keys."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is the difference between TIMESTAMP and TIMESTAMPTZ in PostgreSQL, and why should you ALWAYS use TIMESTAMPTZ?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`TIMESTAMP` (without time zone) completely ignores time zones, storing whatever date/time was given, which causes chaos during daylight savings time and multi-region deployments. `TIMESTAMPTZ` (with time zone) converts any input timestamp to UTC and stores it as UTC internally (8 bytes). When queried, it converts UTC to the client's local session time zone. You should always use `TIMESTAMPTZ` for timestamps to avoid ambiguous historical times."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you safely rename a column on a high-traffic production table without breaking running services?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Directly running `ALTER TABLE users RENAME COLUMN old_name TO new_name` breaks all running application containers still executing queries with `old_name`. Instead: 1. Add `new_name` as a new column. 2. Set up dual-writing in application code. 3. Backfill data from `old_name` to `new_name`. 4. Update application reads to use `new_name`. 5. Once all services run the new code, drop `old_name`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

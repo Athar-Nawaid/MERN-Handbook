@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 39: CI/CD and Deployment | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master CI/CD pipelines, GitHub Actions workflows, secrets management, zero-downtime deployment strategies (Rolling, Blue-Green, Canary), and Expand-and-Contract database migrations.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="39">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VIII — DevOps, Deployment, and Production Readiness</div>
+          <h1 class="chapter-title">Chapter 39: CI/CD and Deployment</h1>
+          <p class="chapter-lead">
+            Automating the path from local commit to global production: Continuous Integration vs. Continuous Delivery vs. Continuous Deployment, production GitHub Actions pipelines, secret management with OpenID Connect (OIDC), zero-downtime deployment patterns (Rolling, Blue-Green, Canary), and zero-downtime database migrations via the Expand-and-Contract pattern.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">GitHub Actions</span>
+              <span class="meta-pill">Blue-Green &amp; Migrations</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Differentiate between <strong>Continuous Integration (CI)</strong>, <strong>Continuous Delivery (CD)</strong>, and <strong>Continuous Deployment (CD)</strong>.</li>
+            <li>Construct robust, multi-job <strong>GitHub Actions workflows</strong> featuring matrix testing, dependency caching, and automated build artifact generation.</li>
+            <li>Implement enterprise <strong>Secrets Management</strong> using GitHub Environment secrets and keyless <strong>OpenID Connect (OIDC)</strong> federation with AWS and GCP.</li>
+            <li>Evaluate zero-downtime deployment strategies: <strong>Recreate</strong>, <strong>Rolling Deployment</strong>, <strong>Blue-Green Deployment</strong>, and <strong>Canary Deployment</strong>.</li>
+            <li>Execute zero-downtime database schema updates using the 5-phase <strong>Expand-and-Contract (Parallel Run)</strong> pattern.</li>
+            <li>Automate static site deployments to <strong>GitHub Pages</strong> with custom domains and automated HTTPS provisioning.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The CI/CD Continuum: Integration, Delivery, and Deployment</h2>
+        <p>
+          In modern software engineering, automated pipelines replace manual error-prone release procedures, establishing rapid feedback loops from pull request to production rollout.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: The CI/CD Pipeline Stages</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Developer Commit (git push)
+       |
+       v
++-------------------------------------------------------------------------+
+| CONTINUOUS INTEGRATION (CI)                                             |
+|  1. Static Linting (ESLint, Prettier)                                   |
+|  2. Type Checking (tsc --noEmit)                                        |
+|  3. Unit &amp; Integration Tests (Vitest, Supertest)                         |
+|  4. Security &amp; Vulnerability Scanning (npm audit, Snyk)                 |
++-------------------------------------------------------------------------+
+       |
+       v
++-------------------------------------------------------------------------+
+| CONTINUOUS DELIVERY (CD)                                                |
+|  5. Build Artifacts (Docker Image, Webpack bundle, Binaries)             |
+|  6. Push Image to Container Registry (Docker Hub, AWS ECR)              |
+|  7. Automated Deployment to Staging Environment                         |
+|  8. End-to-End &amp; Smoke Tests (Playwright)                              |
++-------------------------------------------------------------------------+
+       |
+       +-----------------------------------+
+       | (Manual Approval Gate in CDeliv)  | (Automated Deployment in CDeploy)
+       v                                   v
++-------------------------------------------------------------------------+
+| PRODUCTION DEPLOYMENT                                                   |
+|  9. Database Migrations (Expand phase)                                  |
+| 10. Traffic Shift (Rolling / Blue-Green / Canary)                       |
+| 11. Health Checks &amp; Automated Rollback Monitoring                       |
++-------------------------------------------------------------------------+</code></pre>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Discipline</th>
+                <th>Core Automation Scope</th>
+                <th>Human Intervention Trigger</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Continuous Integration (CI)</strong></td>
+                <td>Automated building, linting, type-checking, and test suite execution on every branch push and Pull Request.</td>
+                <td>None: runs automatically on every Git commit to validate code soundness.</td>
+              </tr>
+              <tr>
+                <td><strong>Continuous Delivery (CD)</strong></td>
+                <td>Automated packaging, container image building, and deployment to Staging environments. Code is always in a release-ready state.</td>
+                <td><strong>Manual Gate:</strong> A product manager or tech lead clicks a "Deploy to Production" button to trigger production release.</td>
+              </tr>
+              <tr>
+                <td><strong>Continuous Deployment (CD)</strong></td>
+                <td>Every commit that passes the automated CI and staging pipeline is deployed directly into production with zero human intervention.</td>
+                <td><strong>Zero Human Intervention:</strong> Relies on comprehensive automated testing, canary analysis, and automated rollbacks.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. GitHub Actions: Production Workflow Architecture</h2>
+        <p>
+          <strong>GitHub Actions</strong> is an event-driven automation platform built directly into GitHub repositories. Workflows are declared in YAML files inside <code>.github/workflows/</code>.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">YAML: .github/workflows/ci-cd.yml</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-yaml">name: Full-Stack CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ----------------------------------------------------
+  # JOB 1: Test &amp; Lint (Runs in parallel across versions)
+  # ----------------------------------------------------
+  test:
+    name: Lint, Typecheck &amp; Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x] # Matrix build across LTS versions
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: &#39;npm&#39; # Automatic caching of ~/.npm
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Lint Code
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run Unit &amp; Integration Tests
+        run: npm run test:coverage
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_db
+
+  # ----------------------------------------------------
+  # JOB 2: Build &amp; Publish Docker Image (Only on main)
+  # ----------------------------------------------------
+  build-and-deploy:
+    name: Build &amp; Deploy to Production
+    needs: test # Waits for Job 1 to succeed!
+    if: github.ref == &#39;refs/heads/main&#39; &amp;&amp; github.event_name == &#39;push&#39;
+    runs-on: ubuntu-latest
+    environment: production # Uses GitHub Environment protection rules
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: actions/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            myorg/myapp:latest
+            myorg/myapp:${{ github.sha }}
+          cache-from: type=gha # GitHub Actions cache backend
+          cache-to: type=gha,mode=max</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Secrets Management &amp; OIDC Federation</h2>
+        <p>
+          Managing cloud credentials in CI/CD pipelines has historically caused catastrophic security leaks when long-lived API keys (e.g., <code>AWS_ACCESS_KEY_ID</code> and <code>AWS_SECRET_ACCESS_KEY</code>) were leaked or compromised.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Keyless Cloud Authentication via OIDC</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">GitHub Actions Runner                                          AWS / GCP Cloud
+         |                                                            |
+         |-- 1. Job requests temporary OIDC Token from GitHub --------|
+         |      (JWT containing repository, branch, and commit SHA)   |
+         |                                                            |
+         |-- 2. Exchanges OIDC Token for IAM Role via STS -----------&gt;|
+         |      AssumeRoleWithWebIdentity                             |
+         |                                                            |
+         |                                                            |-- 3. Verifies JWT signature against
+         |                                                            |      https://token.actions.githubusercontent.com
+         |                                                            |      Validates repo is &quot;myorg/myapp&quot;
+         |                                                            |
+         |&lt;-- 4. Returns Temporary 1-Hour Cloud IAM Credentials ------|
+         |                                                            |
+         |-- 5. Deploys Docker container directly to ECS / EKS -------&gt;|
+         | (Zero hardcoded secrets stored in GitHub repo settings!)    |</code></pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Zero-Downtime Deployment Strategies</h2>
+        <p>
+          In 24/7 web applications, restarting servers to apply an update is unacceptable. Several deployment architectures achieve zero customer-perceived downtime:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Deployment Strategy</th>
+                <th>How It Works</th>
+                <th>Trade-Offs &amp; Cost Analysis</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Recreate</strong></td>
+                <td>Version 1 is shut down completely. Once stopped, Version 2 is launched.</td>
+                <td>
+                  <strong>Pros:</strong> Zero version skew; simplest to execute.<br>
+                  <strong>Cons:</strong> <strong>Guaranteed Downtime:</strong> Users experience 502/503 errors during the restart window.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Rolling Deployment</strong> (Kubernetes Default)</td>
+                <td>Instances running Version 1 are replaced incrementally by Version 2 instances behind a load balancer (e.g., replace 25% at a time).</td>
+                <td>
+                  <strong>Pros:</strong> Zero downtime; no extra infrastructure costs.<br>
+                  <strong>Cons:</strong> <strong>Version Skew:</strong> For a brief window, both V1 and V2 instances serve traffic concurrently. Database changes must support both versions!
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Blue-Green Deployment</strong></td>
+                <td>Two identical production environments exist: "Blue" (live traffic) and "Green" (idle). V2 is deployed to Green, verified with smoke tests, and the load balancer instantly switches 100% of traffic from Blue to Green.</td>
+                <td>
+                  <strong>Pros:</strong> Instant cutover, zero downtime, instant rollback (switch router back to Blue if errors spike).<br>
+                  <strong>Cons:</strong> <strong>Double Infrastructure Cost:</strong> Requires 2x server capacity during deployment.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Canary Deployment</strong></td>
+                <td>Version 2 is deployed to a tiny subset of production instances (e.g., 5% of users). Error rates, latency, and logs are monitored. If healthy, traffic is gradually increased to 25%, 50%, then 100%.</td>
+                <td>
+                  <strong>Pros:</strong> Maximum safety; catches subtle edge-case production bugs with minimal blast radius.<br>
+                  <strong>Cons:</strong> High routing and monitoring complexity; requires service mesh or smart ingress routers.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Database Migrations: The Expand-and-Contract Pattern</h2>
+        <p>
+          The most dangerous mistake in full-stack deployments is executing destructive database migrations (e.g., dropping or renaming a column) simultaneously with application code deployments.
+        </p>
+        <p>
+          During a Rolling or Blue-Green deployment, <strong>old application instances (V1) are still running while new instances (V2) are spinning up</strong>. If V2 immediately drops or renames a column in PostgreSQL, running V1 instances crash with 500 errors!
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: The 5-Phase Expand-and-Contract Pattern</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Goal: Rename column 'fullName' to 'displayName' in users table without downtime.
+
+Phase 1 (Expand): Database Migration
+  ADD new column 'display_name' (nullable). Both columns exist in PostgreSQL.
+
+Phase 2: Deploy App Version 1.1
+  Writes to BOTH 'full_name' and 'display_name'.
+  Reads from 'full_name'. (Ensures new data is populated in both places).
+
+Phase 3: Backfill Background Job
+  UPDATE users SET display_name = full_name WHERE display_name IS NULL;
+
+Phase 4: Deploy App Version 1.2
+  Reads and writes exclusively to 'display_name'.
+  Completely stops referencing 'full_name'.
+
+Phase 5 (Contract): Database Migration
+  ALTER TABLE users DROP COLUMN full_name;
+  (Safely executed days later after verifying zero code references remain!)</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Designing an Automated Database Migration Step in GitHub Actions</h3>
+        <p>
+          <strong>Scenario:</strong> Write a GitHub Actions deployment job step that executes database migrations against a production PostgreSQL database securely, terminating the deployment immediately if the migration fails.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">YAML Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-yaml">      - name: Run Production Database Migrations
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          echo &quot;Applying database migrations...&quot;
+          npm run migrate:up
+        # If migration fails, non-zero exit code halts the entire workflow
+        # preventing application containers from being updated with an invalid DB state!</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: GitHub Actions Automated Static Deploy to GitHub Pages</h3>
+        <p>
+          <strong>Scenario:</strong> Create a GitHub Actions workflow that builds a static documentation website (or Vite React app) and deploys it to GitHub Pages on every push to <code>main</code>.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">YAML Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-yaml">name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: &#39;pages&#39;
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: &#39;.&#39; # Root folder containing index.html and chapters/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 7: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>7. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering CI/CD pipelines, GitHub Actions mechanics, deployment strategies, and zero-downtime database migrations.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is the difference between Continuous Delivery and Continuous Deployment?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Both practices automate testing and artifact building. In Continuous Delivery, every passing build produces an artifact deployable to production, but the actual production release requires an explicit human trigger or approval click. In Continuous Deployment, there is zero human intervention: every commit that successfully passes the automated pipeline is deployed directly into production automatically."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is a Blue-Green deployment and what are its pros and cons?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Blue-Green deployment runs two identical environments: Blue (active production) and Green (idle staging). The new version is deployed to Green and validated; then the load balancer switches 100% of user traffic from Blue to Green. Its pros are instant cutover and instant rollback if errors occur; its main drawback is requiring double the infrastructure capacity during rollout."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is a Rolling Deployment?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In a Rolling deployment, instances running the old version are incrementally replaced by instances running the new version behind a load balancer (e.g., replacing 25% of servers at a time). It achieves zero downtime without requiring extra server capacity, but creates a temporary window of version skew where both versions run simultaneously."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is a Canary Deployment?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Canary deployment routes a tiny fraction of live user traffic (e.g., 2% to 5%) to the new version while the remaining 95% remains on the stable version. The system monitors error rates, latency metrics, and logs. If healthy, traffic is incrementally ramped up to 100%, minimizing the blast radius of unexpected production regressions."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is the purpose of npm ci vs npm install in CI/CD pipelines?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`npm ci` strictly reads `package-lock.json` and deletes any existing `node_modules` before installing exact dependency versions. It never updates the lockfile and throws an error if `package.json` and `package-lock.json` are out of sync. It is faster and guarantees reproducible, deterministic builds in CI environments."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What is OpenID Connect (OIDC) in GitHub Actions and why is it superior to long-lived API keys?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "OIDC allows GitHub Actions to authenticate with cloud providers (AWS, GCP, Azure) without storing long-lived secret access keys in repository settings. The runner exchanges a cryptographically signed GitHub JWT for temporary 1-hour cloud IAM credentials. It eliminates the risk of stolen static keys and automatically scopes access to specific branches and repos."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is the Expand-and-Contract (Parallel Run) pattern for zero-downtime database migrations?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "It splits a breaking schema change into backward-compatible phases: 1) Expand: add the new column or table alongside the old one; 2) Deploy app version that dual-writes to both and reads from old; 3) Backfill historical data; 4) Deploy app version reading and writing exclusively to the new column; 5) Contract: drop the old column once zero code references remain."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">Why does running a destructive migration before application deployment break active instances?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Because during rolling or canary deployments, old instances (V1) are actively serving customer traffic while new instances (V2) are spinning up. If you drop or rename a column in the database before V1 is completely terminated, V1 queries querying that column will fail with 500 internal server errors, causing an outage."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">How do matrix builds work in GitHub Actions and when do you use them?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Matrix builds configure a single job definition to run in parallel across combinations of variables (e.g., Node.js versions `[18, 20, 22]` and operating systems `[ubuntu-latest, windows-latest]`). It is standard for open-source libraries and enterprise microservices to ensure backward compatibility across LTS runtime versions."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">How does dependency caching work in GitHub Actions?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Actions like `actions/setup-node` with `cache: 'npm'` hash the repository's `package-lock.json` file. On subsequent workflow runs, if the lockfile hash matches the cache key, GitHub restores the npm global cache directory directly from cache storage, saving 2 to 5 minutes of network download time on every run."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What are GitHub Environments and what protection rules do they provide?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "GitHub Environments isolate secrets and deployment targets (e.g., `staging` vs `production`). They enforce Protection Rules: requiring manual review approvals from designated senior team members before a production job runs, restricting deployments to protected branches (like `main`), and setting wait timers."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the difference between github.sha and github.ref in workflow context?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`github.sha` is the 40-character commit hash that triggered the workflow run, used to tag immutable Docker images (`myimage:${{ github.sha }}`). `github.ref` is the git reference name (e.g., `refs/heads/main` or `refs/pull/42/merge`), used to conditionally execute deployment jobs only when pushes hit production branches."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">How do you implement an Automated Rollback in a CI/CD pipeline?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "During canary or blue-green deployment, monitoring hooks track production HTTP error rates (5xx spikes) and latency percentiles (P99). If errors exceed an alerting threshold within 5 minutes, an automated webhook triggers a rollback: switching the load balancer router immediately back to the previous stable Docker image or Blue environment."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the difference between needs and if conditions in GitHub Actions jobs?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`needs: [jobA]` establishes a directed acyclic graph (DAG) dependency, ensuring `jobB` does not start until `jobA` finishes successfully. `if:` evaluates a conditional boolean expression (e.g., `if: github.ref == 'refs/heads/main'`), determining whether the job should run or be skipped entirely."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">Why should database indexes be created concurrently during migrations in production?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Standard `CREATE INDEX` acquires an `ACCESS EXCLUSIVE` lock on PostgreSQL tables, blocking all incoming `SELECT`, `INSERT`, and `UPDATE` queries until the index builds, causing customer timeouts. Using `CREATE INDEX CONCURRENTLY` builds the index in the background without locking reads or writes, preserving full production throughput."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How do you handle ephemeral test databases in CI pipelines without slowing down test runs?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "GitHub Actions provides native Service Containers (`services: postgres: image: postgres:16-alpine`), spinning up a real PostgreSQL container alongside the runner on a shared network with RAM tmpfs mounts. Combined with SQL transaction rollback isolation, integration tests run against real PostgreSQL in seconds without external infrastructure."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is GitOps and how does it change traditional CI/CD pipelines?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Traditional CI/CD uses a 'Push' model where the CI runner holds cloud credentials and pushes deployments. GitOps (using ArgoCD or Flux) uses a 'Pull' model where Git is the single source of truth for desired infrastructure state. An in-cluster agent continuously compares running Kubernetes pods against git manifests, pulling updates and reconciling drift automatically."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">How do you prevent concurrent deployment collisions in GitHub Actions?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "We use the `concurrency` block: `concurrency: group: production-deploy, cancel-in-progress: false`. This ensures only one deployment job runs at a time for that environment, queueing subsequent runs sequentially and preventing two concurrent migrations from corrupting database state."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is Semantic Versioning (SemVer) and how is it automated in CI/CD?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "SemVer follows `MAJOR.MINOR.PATCH`. In CI/CD, tools like `semantic-release` inspect Conventional Commits: `fix:` triggers a patch bump (1.0.1), `feat:` triggers a minor bump (1.1.0), and `BREAKING CHANGE:` triggers a major bump (2.0.0). The pipeline automatically creates git tags, updates changelogs, and publishes releases."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you evaluate whether a team is ready for Continuous Deployment?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A team is ready for Continuous Deployment only if they possess: 1) High test suite confidence (>80% integration/unit coverage with near-zero flakiness); 2) Automated database migration backward compatibility (Expand-and-Contract); 3) Real-time production observability (metrics and alert thresholds); and 4) Automated rollback capabilities when error rates rise."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 30: Git, GitHub, and Team Development | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master Git internals, the Three Trees architecture, Merge vs Rebase, interactive squashing, safe undo operations (reset vs revert vs restore), reflog recovery, and Trunk-Based workflows.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="30">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VI — API Design, Security, and Software Engineering</div>
+          <h1 class="chapter-title">Chapter 30: Git, GitHub, and Team Development</h1>
+          <p class="chapter-lead">
+            Demystifying source control from first principles: the Git content-addressable object store (Blobs, Trees, Commits, Tags), the Three Trees architecture, Merge vs. Rebase mechanics, interactive history sanitization, safe undo operations (reset vs. revert vs. restore), reflog disaster recovery, and Trunk-Based Development workflows.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Git Internals</span>
+              <span class="meta-pill">Merge vs Rebase &amp; Reflog</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Examine the internal structure of the <code>.git</code> directory: Blobs, Trees, Commits, and Annotated Tags.</li>
+            <li>Master the <strong>Three Trees Architecture</strong>: Working Directory, Staging Index, and HEAD Repository snapshot.</li>
+            <li>Contrast <strong>Merge</strong> (Fast-Forward vs Three-Way) against <strong>Rebase</strong>, and apply the Golden Rule of Rebasing.</li>
+            <li>Clean local commit histories before PR submission using <code>git rebase -i</code> (squash, fixup, reword).</li>
+            <li>Differentiate safe vs destructive undo operations: <code>git reset</code> (--soft, --mixed, --hard), <code>git revert</code>, and <code>git restore</code>.</li>
+            <li>Recover deleted branches and lost commits using <strong><code>git reflog</code></strong>.</li>
+            <li>Evaluate branching methodologies: <strong>Trunk-Based Development</strong> with feature toggles vs traditional <strong>GitFlow</strong>.</li>
+            <li>Enforce Conventional Commits specification to automate semantic versioning and release changelogs.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Git Object Model &amp; Content-Addressable Storage</h2>
+        <p>
+          Underneath its command-line interface, Git is not a file delta tracker (like SVN or CVS); it is a <strong>Content-Addressable Key-Value Store</strong> built on a Directed Acyclic Graph (DAG).
+        </p>
+        <p>
+          Every piece of data stored in Git lives inside the <code>.git/objects/</code> directory. Its key is a 40-character SHA-1 (or SHA-256) cryptographic hash derived from the object's payload size and content:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Git Object Types and Relationships</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">  Commit Object (hash: a1b2c3d)
+  +-------------------------------------------------------------+
+  | tree: 98f4e2 (Root Tree)                                    |
+  | parent: e5f6a7 (Parent Commit)                              |
+  | author: Alex &lt;alex@dev.com&gt; 1700000000 +0000               |
+  | committer: Alex &lt;alex@dev.com&gt; 1700000000 +0000            |
+  |                                                             |
+  | feat(auth): add JWT login endpoint                         |
+  +-------------------------------------------------------------+
+               |
+               v
+  Tree Object (hash: 98f4e2) [Root directory: &quot;/&quot;]
+  +-------------------------------------------------------------+
+  | 100644 blob 3e8a10  package.json                           |
+  | 040000 tree 7c5d91  src/                                   |
+  +-------------------------------------------------------------+
+                           |
+                           v
+              Subtree Object (hash: 7c5d91) [directory: &quot;src/&quot;]
+              +-------------------------------------------------+
+              | 100644 blob 4f2b90  server.ts                   |
+              | 100644 blob e8a3d1  auth.ts                     |
+              +-------------------------------------------------+
+                                       |
+                                       v
+                          Blob Object (hash: e8a3d1)
+                          +-----------------------------+
+                          | export function login() {   |
+                          |   // raw file bytes...      |
+                          | }                           |
+                          +-----------------------------+</code></pre>
+        </div>
+
+        <h3>The 4 Core Git Objects</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Object Type</th>
+                <th>Header &amp; Contents</th>
+                <th>Role in Git DAG</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Blob</strong> (Binary Large Object)</td>
+                <td><code>blob &lt;content_size&gt;\0&lt;file_contents&gt;</code></td>
+                <td>Stores the raw byte content of a file. Blobs contain <strong>no filenames, directory paths, or timestamps</strong>—only the pure file bytes. If two identical files exist in different folders, Git stores only one single blob!</td>
+              </tr>
+              <tr>
+                <td><strong>Tree</strong></td>
+                <td><code>tree &lt;size&gt;\0[mode type hash filename]...</code></td>
+                <td>Represents a directory. Maps human-readable filenames and file permissions (e.g., <code>100644</code> for normal files, <code>100755</code> for executables) to their underlying Blob or Subtree hashes.</td>
+              </tr>
+              <tr>
+                <td><strong>Commit</strong></td>
+                <td><code>commit &lt;size&gt;\0tree &lt;hash&gt;\nparent &lt;hash&gt;...</code></td>
+                <td>A permanent snapshot of the project state. Points to a root Tree object, zero or more parent commit hashes, author info, committer info, and the commit message.</td>
+              </tr>
+              <tr>
+                <td><strong>Annotated Tag</strong></td>
+                <td><code>tag &lt;size&gt;\0object &lt;hash&gt;\ntype commit\n...</code></td>
+                <td>An explicit, immutable pointer to a commit. Includes tagger name, timestamp, message, and optional GPG cryptographic signature (unlike lightweight tags, which are simple pointer files in <code>.git/refs/tags/</code>).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. The Three Trees Architecture</h2>
+        <p>
+          Understanding Git requires visualizing its three operational areas (often referred to as the "Three Trees"):
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: The Three Trees Pipeline</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Working Directory               Staging Index (Cache)              HEAD (Repository)
+ [Files on disk]                 [.git/index binary]             [Committed Snapshots]
+        |                                 |                                 |
+        |--- 1. Edit code ----------------|                                 |
+        |                                 |                                 |
+        |--- 2. git add &lt;file&gt; -----------&gt;|                                 |
+        |    (Creates Blobs in objects/)  |                                 |
+        |                                 |--- 3. git commit ---------------&gt;|
+        |                                 |    (Creates Tree &amp; Commit)       |
+        |                                 |                                 |
+        |&lt;-- 4. git restore &lt;file&gt; -------| (Discards uncommitted edits)   |
+        |                                 |                                 |
+        |&lt;------------------ 5. git reset --hard HEAD ----------------------|
+        |                    (Overwrites working dir &amp; index with commit)   |</code></pre>
+        </div>
+
+        <ul>
+          <li><strong>1. Working Directory:</strong> The local sandbox on your physical filesystem where you create, modify, and delete code. Files here can be untracked, modified, or clean.</li>
+          <li><strong>2. Staging Index (The Index):</strong> A binary file located at <code>.git/index</code>. It acts as the staging area where you assemble the exact contents of your next prospective commit snapshot via <code>git add</code>.</li>
+          <li><strong>3. HEAD (Repository):</strong> A pointer (stored in <code>.git/HEAD</code>) that references your currently checked-out commit or branch tip. When you execute <code>git commit</code>, Git takes the snapshot recorded in the Staging Index, writes a root Tree object, and creates a new Commit object pointing to HEAD as its parent.</li>
+        </ul>
+
+        <!-- Section 3 -->
+        <h2>3. Merge vs. Rebase: Mechanics and Economics</h2>
+        <p>
+          When integrating changes from a feature branch (<code>feat/auth</code>) into <code>main</code>, Git provides two fundamentally distinct strategies: <strong>Merge</strong> and <strong>Rebase</strong>.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Merge vs Rebase Visual Comparison</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Initial State:
+         C --- D (feat)
+        /
+  A --- B (main)
+
+Option 1: git merge feat (into main)
+  Creates a non-destructive 3-way Merge Commit (M) with two parents:
+         C --- D
+        /       \
+  A --- B ------- M (main)
+
+Option 2: git rebase main (on feat branch)
+  Rewrites commits C and D into C' and D' atop B:
+  A --- B (main)
+         \
+          C' --- D' (feat) [Linear history! Zero merge commit needed!]</code></pre>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Dimension</th>
+                <th>Git Merge</th>
+                <th>Git Rebase</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>History Integrity</strong></td>
+                <td><strong>Chronologically truthful:</strong> Preserves exact timestamps, commit hashes, and the parallel nature of branch development.</td>
+                <td><strong>Rewrites history:</strong> Creates brand-new commit objects with new SHA hashes and timestamps; makes history appear completely linear.</td>
+              </tr>
+              <tr>
+                <td><strong>Commit Count</strong></td>
+                <td>Introduces an extra "Merge commit" (e.g., <code>Merge branch 'feat' into main</code>), unless a Fast-Forward is possible.</td>
+                <td>Zero extraneous merge commits. Every commit represents a clean, self-contained unit of work.</td>
+              </tr>
+              <tr>
+                <td><strong>Debugging (<code>git bisect</code>)</strong></td>
+                <td>Can be confusing during bisecting because commits on the feature branch may interleave chronologically with commits on <code>main</code>.</td>
+                <td>Ideal for <code>git bisect</code>; every commit builds sequentially on top of the latest trunk state.</td>
+              </tr>
+              <tr>
+                <td><strong>Safety &amp; Team Impact</strong></td>
+                <td>Safe: purely additive, never changes existing commit SHAs.</td>
+                <td>Dangerous if misused on shared public branches: force pushing (<code>git push --force</code>) destroys other developers' work.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ The Golden Rule of Rebasing</div>
+          <p>
+            <strong>Never rebase commits that exist outside your local repository and have been pushed to a shared public branch</strong> (like <code>main</code>, <code>staging</code>, or a collaborative team branch). Rebasing rewrites commit SHA hashes; other teammates will have history that has diverged, causing chaotic merge conflicts and duplicate commits.
+          </p>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Interactive Rebase: Polishing Local History</h2>
+        <p>
+          Before opening a Pull Request, senior developers use <strong>Interactive Rebase</strong> (<code>git rebase -i HEAD~N</code>) to clean up messy local commits (e.g., "wip", "fixed typo", "trying again").
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">Bash: The Interactive Rebase Menu</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-bash"># Interactively rebase the last 4 commits on current branch
+git rebase -i HEAD~4
+
+# Git opens your default text editor with this plan:
+pick a1b2c3d feat(auth): add login route
+squash e5f6a7b fix typo in auth middleware
+squash 9c8d7e6 fix failing test
+reword 3b4a5c6 feat(auth): add refresh token endpoint
+
+# Commands:
+# p, pick &lt;commit&gt; = use commit
+# r, reword &lt;commit&gt; = use commit, but edit the commit message
+# e, edit &lt;commit&gt; = use commit, but stop for amending
+# s, squash &lt;commit&gt; = meld into previous commit (combines messages)
+# f, fixup &lt;commit&gt; = like &quot;squash&quot;, but discard this commit's log message
+# d, drop &lt;commit&gt; = remove commit completely</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Undoing Changes: Reset vs. Revert vs. Restore</h2>
+        <p>
+          Knowing how to safely undo changes without losing work is a core qualification for professional engineers:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Command</th>
+                <th>Working Directory</th>
+                <th>Staging Area (Index)</th>
+                <th>Commit History (HEAD)</th>
+                <th>Safe for Shared Branches?</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>git reset --soft HEAD~1</code></td>
+                <td>Unchanged (keeps edits)</td>
+                <td>Unchanged (keeps staged)</td>
+                <td>Rewinds HEAD back 1 commit</td>
+                <td>❌ Local branches only (Rewrites history)</td>
+              </tr>
+              <tr>
+                <td><code>git reset --mixed HEAD~1</code> (default)</td>
+                <td>Unchanged (keeps edits)</td>
+                <td><strong>Un-stages</strong> changes to match new HEAD</td>
+                <td>Rewinds HEAD back 1 commit</td>
+                <td>❌ Local branches only (Rewrites history)</td>
+              </tr>
+              <tr>
+                <td><code>git reset --hard HEAD~1</code></td>
+                <td><strong>Destroys</strong> all uncommitted edits!</td>
+                <td><strong>Overwrites</strong> with previous commit</td>
+                <td>Rewinds HEAD back 1 commit</td>
+                <td>❌ <strong>High Risk:</strong> Uncommitted working edits are lost!</td>
+              </tr>
+              <tr>
+                <td><code>git revert &lt;commit-hash&gt;</code></td>
+                <td>Updated to reflect inverse diff</td>
+                <td>Updated and staged</td>
+                <td><strong>Creates a NEW forward commit</strong> with opposite diff</td>
+                <td>✅ <strong>100% Safe:</strong> The standard way to undo commits on <code>main</code></td>
+              </tr>
+              <tr>
+                <td><code>git restore &lt;file&gt;</code></td>
+                <td>Discards local working edits to match staging</td>
+                <td>Unchanged</td>
+                <td>Unchanged</td>
+                <td>✅ Safe local file discard (Modern alternative to <code>git checkout -- file</code>)</td>
+              </tr>
+              <tr>
+                <td><code>git restore --staged &lt;file&gt;</code></td>
+                <td>Unchanged</td>
+                <td>Un-stages file back to working tree</td>
+                <td>Unchanged</td>
+                <td>✅ Safe un-staging (Modern replacement for <code>git reset HEAD file</code>)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Disaster Recovery: The Power of <code>git reflog</code></h2>
+        <p>
+          In Git, almost nothing is truly lost. Even if you accidentally run <code>git reset --hard</code> or delete a local branch, the commit objects remain in <code>.git/objects/</code> until garbage collected (which takes 30 to 90 days by default).
+        </p>
+        <p>
+          The <strong>Reference Log (<code>git reflog</code>)</strong> records every single time the <code>HEAD</code> pointer moved in your local repository:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">Bash: Recovering Lost Commits with Reflog</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-bash"># View recent movements of HEAD
+git reflog
+
+# Output:
+# 3b4a5c6 (HEAD -&gt; main) HEAD@{0}: reset: moving to HEAD~2  &lt;-- You ran reset --hard by mistake!
+# e8a3d12 HEAD@{1}: commit: feat(billing): add Stripe webhooks  &lt;-- Lost commit!
+# 7c5d914 HEAD@{2}: commit: feat(billing): add checkout session
+
+# To recover the accidentally deleted commit e8a3d12:
+# Method A: Point a new branch directly to the lost commit:
+git branch recovery-branch e8a3d12
+
+# Method B: Reset HEAD back to the state before the mistake:
+git reset --hard HEAD@{1}</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Team Branching Strategies: Trunk-Based vs. GitFlow</h2>
+        
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Branching Model</th>
+                <th>Core Workflow &amp; Mechanics</th>
+                <th>Pros &amp; Modern Applicability</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Trunk-Based Development</strong> (Modern Standard)</td>
+                <td>Developers merge short-lived feature branches (&lt;1–2 days old) directly into <code>main</code> (the "trunk"). Incomplete features are hidden behind runtime <strong>Feature Flags</strong> (toggles).</td>
+                <td>
+                  <strong>Pros:</strong> Eliminates "Merge Hell", enables Continuous Deployment (multiple deploys per day), fosters smaller PRs, and accelerates team velocity.<br>
+                  <strong>Best for:</strong> SaaS, web startups, microservices, and high-frequency deployment teams.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>GitFlow</strong> (Legacy Model)</td>
+                <td>Heavy branching structure with long-lived branches: <code>master</code>, <code>develop</code>, <code>feature/*</code>, <code>release/*</code>, and <code>hotfix/*</code>. Feature branches merge into <code>develop</code>; releases branch from <code>develop</code> and merge to both <code>master</code> and <code>develop</code>.</td>
+                <td>
+                  <strong>Pros:</strong> Provides rigid, formal milestone gates for release management.<br>
+                  <strong>Cons:</strong> High merge conflict overhead; slow release cycles; antithetical to modern CI/CD automation.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 8 -->
+        <h2>8. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Resolving a Git Merge Conflict</h3>
+        <p>
+          <strong>Scenario:</strong> You are rebasing your branch <code>feat/nav</code> on top of <code>main</code>. Git pauses with a merge conflict in <code>src/config.ts</code>. Walk through the resolution commands.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">Bash Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-bash"># 1. Inspect which files conflict
+git status
+# both modified: src/config.ts
+
+# 2. Open src/config.ts and look for conflict markers:
+# &lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD (from main)
+# export const API_TIMEOUT = 5000;
+# =======
+# export const API_TIMEOUT = 10000;
+# &gt;&gt;&gt;&gt;&gt;&gt;&gt; feat/nav (your branch)
+
+# 3. Edit the file to desired state (e.g. choose 10000) and delete all marker lines
+
+# 4. Stage the resolved file
+git add src/config.ts
+
+# 5. Continue the rebase (NEVER run git commit during a rebase conflict!)
+git rebase --continue
+
+# If you ever get completely lost and want to abort safely:
+# git rebase --abort</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: Squashing 3 Commits into a Clean Conventional Commit</h3>
+        <p>
+          <strong>Scenario:</strong> You made 3 local commits: "added button", "fixed css", "oops fixed typo". Combine them into a single commit with message: <code>feat(ui): add primary call-to-action button</code>.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">Bash Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-bash"># Approach A: Interactive Rebase
+git rebase -i HEAD~3
+
+# In the editor, configure:
+# pick 1111111 added button
+# fixup 2222222 fixed css
+# fixup 3333333 oops fixed typo
+
+# Then amend the commit message:
+git commit --amend -m &quot;feat(ui): add primary call-to-action button&quot;
+
+# Approach B: Soft Reset (Quickest Method)
+git reset --soft HEAD~3
+git commit -m &quot;feat(ui): add primary call-to-action button&quot;</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 9: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>9. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering Git DAG internals, merge vs rebase, reflog recovery, Three Trees mechanics, and team branching models.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What are the three main areas (trees) in Git?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Git operates across Three Trees: the Working Directory (your physical files on disk), the Staging Area or Index (a binary staging cache where you assemble snapshot contents using `git add`), and HEAD (the repository snapshot representing the currently checked-out commit)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is the difference between git merge and git rebase?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`git merge` combines two branch tips by creating a non-destructive three-way merge commit with two parent references, preserving exact chronological history. `git rebase` rewrites history by replaying your branch's commits one by one on top of the target branch tip, producing a clean, linear commit history without extraneous merge commits."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is a Fast-Forward merge?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Fast-Forward merge occurs when the target branch has received zero new commits since the feature branch diverged. Because there are no divergent changes to reconcile, Git simply moves the target branch pointer forward to point to the latest commit on the feature branch without creating a merge commit."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What does git cherry-pick do?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`git cherry-pick <commit-hash>` takes the exact change introduced by a specific commit from another branch and applies it as a brand-new commit on your currently checked-out branch. It is commonly used to backport critical bug fixes from `main` into a release maintenance branch without merging unreleased features."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is the difference between git fetch and git pull?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`git fetch` downloads commits, files, and refs from the remote repository into your local repository without modifying your working files or current branch. `git pull` performs a `git fetch` followed immediately by a `git merge` (or `git rebase` if configured) to integrate those changes into your currently active working branch."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What are the four core internal object types in Git?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The four core objects in `.git/objects/` are: 1) Blobs, which store raw uncompressed file contents without filenames; 2) Trees, which represent directories mapping filenames and permissions to Blob or Subtree hashes; 3) Commits, which link to a root Tree, parent commit hashes, author metadata, and a log message; and 4) Annotated Tags, which point to a commit with a message and optional GPG signature."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is the difference between git reset --soft, --mixed, and --hard?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`--soft` moves the HEAD pointer back to a specified commit while leaving your Staging Index and Working Directory untouched; your changes remain staged. `--mixed` (the default) moves HEAD and un-stages the changes, leaving modified files in your working directory. `--hard` moves HEAD, wipes the Staging Index, and overwrites your Working Directory to match the target commit, permanently discarding uncommitted changes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is the difference between git reset and git revert?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`git reset` rewinds history by moving the branch pointer backward, effectively erasing commits from the current branch history. `git revert` is purely forward-moving: it generates a brand-new commit that applies the exact inverse diff of the target commit. Because it doesn't rewrite existing commit history, `git revert` is the safe, required approach for undoing changes on shared branches like `main`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is git reflog and how do you use it to recover an accidentally deleted branch?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`git reflog` (reference log) records every movement of local branch tips and HEAD, even when commits are orphaned or branches deleted. Running `git reflog` displays recent commit hashes. Once you identify the hash corresponding to the tip of your deleted branch, you can instantly resurrect it by running `git branch <branch-name> <commit-hash>`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is the Golden Rule of Rebasing and why does it exist?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Golden Rule of Rebasing states: Never rebase commits that have been pushed to a shared public branch. Rebasing creates brand-new commit hashes for replayed commits. If teammates have already based work on the old commits, force-pushing rewritten commits creates divergent histories, leading to corrupted branches and painful merge conflict resolution."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the difference between git restore and git checkout?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Historically, `git checkout` was overloaded: it was used to switch branches, create branches, and discard file modifications. Git 2.23 introduced `git restore` dedicated specifically to restoring files (e.g., `git restore file.js` to discard working changes or `git restore --staged file.js` to un-stage), while `git switch` is used exclusively for switching branches."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the difference between squash and fixup in an interactive rebase?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Both commands meld the selected commit into the commit immediately preceding it in the rebase plan. However, `squash` opens an editor prompt concatenating both commit messages so you can combine them into a unified log. `fixup` discards the selected commit's message entirely, retaining only the parent commit's message."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Compare Trunk-Based Development with GitFlow.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Trunk-Based Development emphasizes merging short-lived feature branches into `main` frequently (multiple times per day), relying on automated CI test suites and Feature Flags for unfinished code. GitFlow relies on long-lived branches (`develop`, `release`, `hotfix`, `master`). Trunk-Based is favored in modern continuous delivery because it eliminates merge conflicts and accelerates shipping."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What are Conventional Commits and why are they valuable in CI/CD?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Conventional Commits enforce a structured message format: `type(scope): description` (e.g., `feat(auth):`, `fix(db):`, `BREAKING CHANGE:`). In automated CI/CD pipelines, tools like `semantic-release` parse these prefixes to automatically calculate Semantic Version bumps (patch for fixes, minor for feats, major for breaking changes) and generate release changelogs."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">How does Git store identical files located in different folders internally?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Because Git is a content-addressable storage system, the key for a Blob object is determined strictly by the SHA hash of its content. If you have 50 identical files across different folders, Git creates exactly ONE Blob object in `.git/objects/`. The distinct directory locations and filenames are stored inside Tree objects, each pointing to the same underlying Blob SHA."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What is a detached HEAD state in Git and how do you resolve it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Normally, HEAD points to a named branch reference (e.g., `ref: refs/heads/main`). A detached HEAD occurs when you check out a specific commit hash or tag directly (`git checkout a1b2c3d`). Any commits made in this state belong to no branch and will become orphaned when you switch branches. To save your work, create a new branch immediately: `git switch -c new-feature-branch`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is git bisect and how does it locate regressions automatically?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`git bisect` performs a binary search through commit history to identify the exact commit that introduced a bug. You specify a known good commit (`git bisect good`) and a bad commit (`git bisect bad`). Git checks out the midpoint commit for testing. With an automated test script (`git bisect run npm test`), Git can isolate a regression across 1,000 commits in just 10 test iterations (O(log N))."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">Why should you use git push --force-with-lease instead of git push --force?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`git push --force` blindly overwrites the remote branch ref with your local ref, annihilating any commits pushed by teammates in the meantime. `--force-with-lease` is a protective check: it only forces the push if your local remote tracking ref (`origin/branch`) matches the actual state on the remote server, failing gracefully if a teammate pushed new work."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What happens under the hood during git stash?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`git stash` creates two or three commit objects behind the scenes: one commit stores the changes in your Staging Index, another commit stores your modified working directory changes (with the first commit as its parent), and an optional third commit stores untracked files. A special ref `refs/stash` is updated to point to the working tree stash commit."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you explain the value of linear commit history to an engineering team?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A linear commit history created through rebasing and squashing provides an immaculate, readable narrative of what changed and why. It makes code reviews straightforward, simplifies rollback procedures because features can be reverted with a single `git revert` commit, and allows `git bisect` to locate production regressions with 100% precision."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

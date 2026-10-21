@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 34: Caching Strategies and Redis | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master production caching and Redis: Cache-Aside vs Write-Through, Stampede and Avalanche defenses, Redis data structures (ZSET, HyperLogLog), RDB vs AOF persistence, and Redlock distributed locks.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="34">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VII — System Design and Distributed Systems</div>
+          <h1 class="chapter-title">Chapter 34: Caching Strategies &amp; Redis Engineering</h1>
+          <p class="chapter-lead">
+            Maximizing throughput and eliminating database bottlenecks: Caching patterns (Cache-Aside, Write-Through, Write-Behind), catastrophic failure modes (Stampede, Breakdown, Avalanche, Penetration), Redis single-threaded architecture, specialized data structures (ZSET, HyperLogLog, Streams), durability mechanics (RDB vs AOF), and distributed locking with Redlock.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Redis Architecture</span>
+              <span class="meta-pill">Cache Stampede &amp; Redlock</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Calculate effective latency using <strong>Cache Hit Ratio</strong> economics and understand the physics of the 1,000x RAM-to-SSD throughput gap.</li>
+            <li>Analyze four core <strong>Caching Patterns</strong>: Cache-Aside (Lazy Loading), Write-Through, Write-Behind (Write-Back), and Refresh-Ahead.</li>
+            <li>Diagnose and defend against the four catastrophic cache failures: <strong>Cache Stampede (Thundering Herd)</strong>, <strong>Cache Breakdown</strong>, <strong>Cache Avalanche</strong>, and <strong>Cache Penetration</strong>.</li>
+            <li>Master Redis eviction policies (<code>allkeys-lru</code>, <code>volatile-ttl</code>, <code>allkeys-lfu</code>) and memory limits.</li>
+            <li>Deconstruct why Redis is single-threaded for command execution using <strong>I/O multiplexing (epoll/kqueue)</strong>.</li>
+            <li>Leverage Redis specialized data structures: Hashes, Sorted Sets (ZSET for leaderboards &amp; sliding windows), and HyperLogLog.</li>
+            <li>Compare persistence models: <strong>RDB point-in-time snapshots</strong> vs <strong>AOF append-only logs</strong>.</li>
+            <li>Implement safe single-instance distributed locks with <strong>Lua release scripts</strong> and analyze the <strong>Redlock algorithm</strong>.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Caching Imperative &amp; Hit Ratio Economics</h2>
+        <p>
+          In high-volume full-stack systems, databases (PostgreSQL, MongoDB) are constrained by disk I/O, lock contention, and connection limits. In-memory data stores like <strong>Redis</strong> operate entirely in RAM, executing queries in sub-milliseconds (\(100{,}000+\) operations per second per core).
+        </p>
+
+        <div class="callout callout-note">
+          <div class="callout-title">💡 The Effective Latency Equation</div>
+          <p>
+            The average latency experienced by users is defined by the <strong>Cache Hit Ratio (\(H\))</strong>:
+            \[
+            \text{Latency}_{\text{effective}} = (H \times \text{Latency}_{\text{cache}}) + ((1 - H) \times \text{Latency}_{\text{database}})
+            \]
+            If Redis latency is 1ms and PostgreSQL latency is 50ms:
+            <ul>
+              <li>At a <strong>50% hit ratio</strong>: \((0.5 \times 1\text{ms}) + (0.5 \times 50\text{ms}) = 25.5\text{ms}\).</li>
+              <li>At a <strong>95% hit ratio</strong>: \((0.95 \times 1\text{ms}) + (0.05 \times 50\text{ms}) = 3.45\text{ms}\) (Over <strong>7x faster</strong> overall system latency!).</li>
+            </ul>
+          </p>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Caching Access Patterns</h2>
+        <p>
+          How your application reads from and writes to the cache dictates data consistency, latency, and fault tolerance.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Caching Pattern</th>
+                <th>Read &amp; Write Workflow</th>
+                <th>Trade-Offs &amp; Best Fit</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Cache-Aside (Lazy Loading)</strong></td>
+                <td>
+                  <strong>Read:</strong> App checks Cache. On Hit, return data. On Miss, read Database, write to Cache with TTL, return data.<br>
+                  <strong>Write:</strong> App writes to DB, then invalidates (deletes) the key from Cache.
+                </td>
+                <td>
+                  <strong>Pros:</strong> Only requested data is cached (memory efficient); cache failures do not crash the app (falls back to DB).<br>
+                  <strong>Cons:</strong> Cache miss penalty on first access; potential temporary stale data if writes bypass cache invalidation.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Write-Through</strong></td>
+                <td>App writes to Cache; the Cache engine synchronously writes to DB before acknowledging success.</td>
+                <td>
+                  <strong>Pros:</strong> Data in cache is never stale; immediate read consistency.<br>
+                  <strong>Cons:</strong> Higher write latency (two writes per mutation); caches data that may never be read again (cache pollution).
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Write-Behind (Write-Back)</strong></td>
+                <td>App writes directly to Cache, which acknowledges immediately. Cache asynchronously batches writes to DB in the background.</td>
+                <td>
+                  <strong>Pros:</strong> Ultra-fast write performance; absorbs massive traffic spikes; deduplicates rapid writes.<br>
+                  <strong>Cons:</strong> <strong>Data Loss Risk:</strong> If the cache instance crashes before flushing the queue to DB, updates are permanently lost.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Refresh-Ahead</strong></td>
+                <td>Cache proactively re-fetches and updates keys before their TTL expires based on historical access patterns.</td>
+                <td>
+                  <strong>Pros:</strong> Eliminates cache miss latency for hot keys.<br>
+                  <strong>Cons:</strong> Complex prediction algorithms; wasted bandwidth if predicted keys are not actually read.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Catastrophic Cache Failure Modes &amp; Defenses</h2>
+        <p>
+          In large-scale distributed architectures, naive caching implementations can cause cascading outages:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Failure Mode</th>
+                <th>Root Cause &amp; Mechanics</th>
+                <th>Defensive Engineering Strategy</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Cache Stampede (Thundering Herd)</strong></td>
+                <td>A popular key expires or is evicted. Hundreds of concurrent requests experience a cache miss at the exact same millisecond and all simultaneously query the database, overloading CPU and exhausting connection pools.</td>
+                <td>
+                  1. <strong>Distributed Mutex Lock:</strong> First request acquires a Redis lock (<code>SET key NX</code>) to compute and re-populate the cache; other requests wait or return stale data.<br>
+                  2. <strong>XFetch Algorithm:</strong> Probabilistic early recomputation before TTL expiration.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Cache Breakdown</strong></td>
+                <td>A single super-hot key (e.g., breaking news story or viral tweet) expires under massive continuous load, instantly transferring tens of thousands of QPS directly to the database.</td>
+                <td>Never assign hard TTLs to super-hot keys. Instead, use a background worker or cron job to refresh the key asynchronously.</td>
+              </tr>
+              <tr>
+                <td><strong>Cache Avalanche</strong></td>
+                <td>Many distinct cache keys are set with the exact same TTL (e.g., all set to expire in 3600 seconds during morning warmup). When the hour strikes, all keys expire simultaneously, drowning the database in misses.</td>
+                <td><strong>TTL Jitter:</strong> Add random variance to expiration times: <code>TTL = baseTTL + randomJitter(-10%, +10%)</code> so expirations are smoothed evenly over time.</td>
+              </tr>
+              <tr>
+                <td><strong>Cache Penetration</strong></td>
+                <td>Malicious or erroneous clients query non-existent IDs (e.g., <code>GET /users/-99999</code>). The key is not in Redis, so requests hit the database, which finds nothing, leaving Redis unpopulated. Every subsequent request hits the database.</td>
+                <td>
+                  1. <strong>Cache Null Values:</strong> Store <code>null</code> with a short TTL (e.g., 60 seconds) in Redis.<br>
+                  2. <strong>Bloom Filter:</strong> Position a space-efficient probabilistic filter in front of Redis to reject non-existent IDs immediately.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Cache Eviction Policies in Redis</h2>
+        <p>
+          When Redis reaches its allocated RAM limit (<code>maxmemory</code>), it must evict existing keys to accommodate new writes. Redis provides several eviction strategies configured via <code>maxmemory-policy</code>:
+        </p>
+        <ul>
+          <li><strong><code>allkeys-lru</code> (Most Common):</strong> Evicts the Least Recently Used keys among all keys. Ideal when you have a power-law distribution (80% of requests access 20% of keys).</li>
+          <li><strong><code>volatile-lru</code>:</strong> Evicts least recently used keys among those with an explicit TTL expiration set.</li>
+          <li><strong><code>allkeys-lfu</code>:</strong> Evicts Least Frequently Used keys. Better than LRU if a rarely used key was accessed once recently.</li>
+          <li><strong><code>volatile-ttl</code>:</strong> Evicts keys with an explicit expiration, prioritizing keys with the shortest remaining Time-To-Live.</li>
+          <li><strong><code>noeviction</code>:</strong> Returns an error on writes (<code>OOM command not allowed</code>) when memory is full. Safe for message queues where dropping data is unacceptable.</li>
+        </ul>
+
+        <!-- Section 5 -->
+        <h2>5. Redis Architecture: Why is it Single-Threaded?</h2>
+        <p>
+          A common interview question asks: <em>"How does Redis handle 100,000+ operations per second if its core execution engine is single-threaded?"</em>
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Redis I/O Multiplexing Event Loop</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Client 1 (Socket 1) ---+
+Client 2 (Socket 2) ---|---&gt; [ OS Kernel: epoll / kqueue ]
+Client 3 (Socket 3) ---+                  |
+                                          v  (Non-blocking socket readiness notifications)
+                             +--------------------------+
+                             |  Redis I/O Event Loop    |
+                             +--------------------------+
+                                          |
+                                          v  (Sequential, lock-free memory mutations)
+                             +--------------------------+
+                             |   In-Memory Datastore    |
+                             |  (Hashes, ZSETs, Lists)  |
+                             +--------------------------+</code></pre>
+        </div>
+
+        <h3>The Architectural Secrets of Redis Performance</h3>
+        <ol>
+          <li><strong>In-Memory Operations:</strong> All data lives in RAM. Reading or mutating a hash or string takes tens of nanoseconds, with zero disk seek or serialization delays.</li>
+          <li><strong>Non-Blocking I/O Multiplexing:</strong> Redis uses OS-level event notification mechanisms (<code>epoll</code> on Linux, <code>kqueue</code> on macOS) to monitor thousands of client connections concurrently without dedicating a thread per connection.</li>
+          <li><strong>Zero Thread Synchronization Overhead:</strong> Because commands execute sequentially on a single thread, Redis requires <strong>zero mutex locks, zero spinlocks, and zero context switching</strong>. Race conditions inside data structures are physically impossible.</li>
+          <li><em>Note on Redis 6.0+:</em> Modern Redis uses background threads specifically for multi-threaded network socket reading and writing, but the actual command execution engine remains strictly single-threaded.</li>
+        </ol>
+
+        <!-- Section 6 -->
+        <h2>6. Redis Specialized Data Structures</h2>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Data Structure</th>
+                <th>Underlying Internal Representation</th>
+                <th>Primary Full-Stack Use Cases &amp; Key Commands</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Strings</strong></td>
+                <td>SDS (Simple Dynamic String) with dynamic memory buffer. Max 512MB.</td>
+                <td>Session storage, HTML caching, atomic counters (<code>INCR</code>, <code>DECR</code>), distributed locks (<code>SET ... NX EX</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Hashes</strong></td>
+                <td>Listpack (ziplist) when small; converted to Hash Table when field count exceeds threshold.</td>
+                <td>Storing user profiles and objects (<code>HSET user:42 name "Jane" email "jane@site.com"</code>). Significantly more memory-efficient than storing JSON strings!</td>
+              </tr>
+              <tr>
+                <td><strong>Lists</strong></td>
+                <td>Quicklist (a doubly linked list of ziplist nodes).</td>
+                <td>Producer-consumer queues, message timelines (<code>LPUSH</code>, <code>RPOP</code>, blocking pop <code>BRPOP</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Sets</strong></td>
+                <td>Intset (for small integer sets) or Hash Table.</td>
+                <td>Unique visitors, tags, friend circles, mathematical set operations (<code>SADD</code>, <code>SINTER</code> intersection, <code>SDIFF</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Sorted Sets (ZSET)</strong></td>
+                <td>Dual structure: <strong>Skip List</strong> (\(\mathcal{O}(\log N)\) score ranking) + <strong>Hash Table</strong> (\(\mathcal{O}(1)\) score lookup).</td>
+                <td>Real-time gaming leaderboards, sliding window rate limiters, priority task queues (<code>ZADD</code>, <code>ZRANGEBYSCORE</code>, <code>ZREVRANK</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>HyperLogLog</strong></td>
+                <td>Probabilistic register array using dense or sparse representation. Max memory fixed at exactly <strong>12 KB</strong>!</td>
+                <td>Counting unique daily active users (cardinality estimation) across billions of events with a standard error rate of only 0.81% (<code>PFADD</code>, <code>PFCOUNT</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Streams</strong></td>
+                <td>Radix Tree of listpack message entries.</td>
+                <td>Event-driven architectures, Kafka-like message logs with consumer groups, persistent IDs, and acknowledgments (<code>XADD</code>, <code>XREADGROUP</code>, <code>XACK</code>).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Redis Persistence: RDB vs. AOF</h2>
+        <p>
+          While Redis is an in-memory database, it provides two configurable persistence engines to survive server restarts:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Dimension</th>
+                <th>RDB (Redis Database Snapshot)</th>
+                <th>AOF (Append-Only File)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Mechanism</strong></td>
+                <td>Takes point-in-time binary snapshots of the entire dataset at configured intervals (e.g., <code>save 900 1</code> = save if at least 1 key changed in 15 mins).</td>
+                <td>Logs every write command received by the server to an append-only text log file. Replays commands sequentially on server restart.</td>
+              </tr>
+              <tr>
+                <td><strong>Durability &amp; Data Loss</strong></td>
+                <td><strong>Potential Data Loss:</strong> If Redis crashes, all mutations since the last snapshot are permanently lost (e.g., last 5–15 minutes of data).</td>
+                <td><strong>High Durability:</strong> With <code>appendfsync everysec</code> (default), at most 1 second of write data is lost during sudden power failure.</td>
+              </tr>
+              <tr>
+                <td><strong>Restart Recovery Speed</strong></td>
+                <td>⚡ Blazing fast: loads compact, raw binary snapshot directly into memory.</td>
+                <td>⏳ Slower: must parse and execute millions of sequential text commands to rebuild state.</td>
+              </tr>
+              <tr>
+                <td><strong>File Size &amp; Disk I/O</strong></td>
+                <td>Extremely compact single <code>.rdb</code> file. Zero disk I/O between snapshot runs.</td>
+                <td>File grows large; requires automated background compaction (<code>BGREWRITEAOF</code>) to collapse redundant writes.</td>
+              </tr>
+              <tr>
+                <td><strong>Production Standard</strong></td>
+                <td colspan="2"><strong>Hybrid Persistence (Redis 4.0+):</strong> AOF file begins with an RDB binary snapshot preamble followed by incremental AOF logs. Provides the fast recovery of RDB with the durability of AOF.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 8 -->
+        <h2>8. Distributed Locking with Redis &amp; Redlock</h2>
+        <p>
+          To coordinate work across multiple Node.js instances (e.g., ensuring only one worker executes an hourly billing calculation), we use Redis distributed locks.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">TypeScript: Production Single-Instance Redis Lock with Lua Script</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-typescript">import Redis from &#39;ioredis&#39;;
+import crypto from &#39;crypto&#39;;
+
+const redis = new Redis();
+
+// Safe unlock requires an atomic Lua script to verify lock ownership
+const RELEASE_LOCK_LUA = `
+  if redis.call(&quot;get&quot;, KEYS[1]) == ARGV[1] then
+    return redis.call(&quot;del&quot;, KEYS[1])
+  else
+    return 0
+  end
+`;
+
+export async function withDistributedLock&lt;T&gt;(
+  lockKey: string,
+  ttlMs: number,
+  task: () =&gt; Promise&lt;T&gt;
+): Promise&lt;T | null&gt; {
+  const token = crypto.randomUUID(); // Unique ownership token
+
+  // 1. Acquire lock atomically with NX (Only if Not Exists) and PX (millisecond TTL)
+  const acquired = await redis.set(`lock:${lockKey}`, token, &#39;PX&#39;, ttlMs, &#39;NX&#39;);
+  if (!acquired) {
+    return null; // Lock is currently held by another worker
+  }
+
+  try {
+    return await task();
+  } finally {
+    // 2. Release lock safely using atomic Lua script
+    // Prevents deleting someone else's lock if our task took longer than ttlMs!
+    await redis.eval(RELEASE_LOCK_LUA, 1, `lock:${lockKey}`, token);
+  }
+}</code></pre>
+        </div>
+
+        <!-- Section 9 -->
+        <h2>9. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Sliding Window Rate Limiter Using Redis Sorted Sets (ZSET)</h3>
+        <p>
+          <strong>Scenario:</strong> Implement a production-grade Sliding Window Log rate limiter that permits a maximum of 10 requests per 60-second window per IP using atomic Redis ZSET transactions.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">import Redis from &#39;ioredis&#39;;
+
+const redis = new Redis();
+
+export async function isRateLimited(
+  ip: string,
+  limit = 10,
+  windowSeconds = 60
+): Promise&lt;{ allowed: boolean; remaining: number }&gt; {
+  const key = `ratelimit:${ip}`;
+  const now = Date.now();
+  const clearBefore = now - windowSeconds * 1000;
+
+  // Execute atomic pipeline
+  const pipeline = redis.pipeline();
+  // 1. Remove timestamps outside the sliding window
+  pipeline.zremrangebyscore(key, 0, clearBefore);
+  // 2. Add current request timestamp (using random suffix for unique member name)
+  pipeline.zadd(key, now, `${now}-${Math.random()}`);
+  // 3. Count total requests remaining in current window
+  pipeline.zcard(key);
+  // 4. Refresh TTL on key
+  pipeline.expire(key, windowSeconds);
+
+  const results = await pipeline.exec();
+  const currentCount = results![2][1] as number;
+
+  if (currentCount &gt; limit) {
+    return { allowed: false, remaining: 0 };
+  }
+
+  return { allowed: true, remaining: limit - currentCount };
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: Cache-Aside with Stampede Mutex Lock</h3>
+        <p>
+          <strong>Scenario:</strong> Write a generic <code>getOrSetCache(key, ttl, fetcher)</code> function that uses a short 5-second distributed mutex to prevent the Thundering Herd problem when a key expires.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">import Redis from &#39;ioredis&#39;;
+
+const redis = new Redis();
+
+export async function getOrSetCache&lt;T&gt;(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () =&gt; Promise&lt;T&gt;
+): Promise&lt;T&gt; {
+  // 1. Check cache
+  const cached = await redis.get(key);
+  if (cached) {
+    return JSON.parse(cached) as T;
+  }
+
+  // 2. Cache Miss: Attempt to acquire mutex lock
+  const lockKey = `lock:${key}`;
+  const acquired = await redis.set(lockKey, &#39;1&#39;, &#39;EX&#39;, 5, &#39;NX&#39;);
+
+  if (!acquired) {
+    // Another worker is already fetching! Wait 100ms and retry from cache
+    await new Promise((res) =&gt; setTimeout(res, 100));
+    return getOrSetCache(key, ttlSeconds, fetcher);
+  }
+
+  try {
+    // 3. We hold the lock: Fetch from DB and populate cache
+    const freshData = await fetcher();
+    await redis.set(key, JSON.stringify(freshData), &#39;EX&#39;, ttlSeconds);
+    return freshData;
+  } finally {
+    await redis.del(lockKey);
+  }
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 10: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>10. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering caching patterns, Redis architecture, eviction mechanics, persistence, and distributed locks.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What is Cache-Aside (Lazy Loading) and what are its trade-offs?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In Cache-Aside, the application first checks the cache. On a hit, it returns the cached data; on a miss, it reads from the database, writes the result to the cache with a TTL, and returns it. Its trade-off is that initial requests suffer a latency penalty on cache misses, but it is memory-efficient because only requested data is cached, and cache outages don't bring down the system."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is the difference between Write-Through and Write-Behind (Write-Back) caching?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In Write-Through, the application writes to the cache, which synchronously writes to the database before confirming success, ensuring strong read consistency at the expense of higher write latency. In Write-Behind, the application writes to the cache, which acknowledges immediately and asynchronously flushes batched writes to the database. Write-Behind delivers ultra-high write speeds, but risks data loss if the cache crashes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is a Cache Stampede (Thundering Herd) and how do you prevent it?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Cache Stampede happens when a heavily accessed key expires, causing hundreds of concurrent requests to experience a cache miss simultaneously and hammer the database all at once. We prevent this using a distributed mutex lock (Redis `SET NX`): only the first thread acquires the lock to query the database and re-populate the cache, while other requests wait or receive stale data."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is Cache Avalanche and how does TTL Jitter solve it?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Cache Avalanche occurs when thousands of cache keys are configured with the exact same TTL and expire at the exact same second, causing a sudden tidal wave of database queries. TTL Jitter solves this by adding random variance to expiration times (e.g., `baseTTL ± random(10%)`), distributing cache expirations smoothly over time."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is Cache Penetration and what are two ways to defend against it?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Cache Penetration occurs when clients repeatedly query non-existent keys (like `id: -999`). Because the data doesn't exist in Redis or the database, it is never cached, and every request hits the database. We defend against this by: 1) Caching empty/null results with a short TTL (e.g., 60 seconds), and 2) Using a Bloom Filter in front of Redis to immediately reject keys that definitely do not exist."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">Why is Redis single-threaded for command execution, and why is it so fast?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Redis executes commands sequentially on a single thread to eliminate mutex lock contention, race conditions, and CPU thread context-switching overhead. It achieves 100,000+ QPS because: 1) All operations run directly in RAM; 2) It uses non-blocking I/O multiplexing (epoll/kqueue) to handle thousands of sockets; and 3) Data structures are optimized in C with minimal memory overhead."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is the difference between allkeys-lru and allkeys-lfu eviction in Redis?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`allkeys-lru` evicts the Least Recently Used keys regardless of how many times they were accessed in the past. `allkeys-lfu` evicts the Least Frequently Used keys by tracking access frequency counters. LFU is superior when an application has historical hot keys that shouldn't be evicted just because a batch script temporarily scanned cold keys."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">How does a Redis Sorted Set (ZSET) work under the hood?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Sorted Set combines two data structures: a Hash Table and a Skip List. The Hash Table maps member values to floating-point scores, providing O(1) score lookups. The Skip List maintains members in score-sorted order across multi-level forward pointers, providing O(log N) insertions, deletions, and range queries (like `ZRANGEBYSCORE`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is HyperLogLog in Redis and when would you use it instead of a Set?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "HyperLogLog is a probabilistic data structure used to estimate the cardinality (unique count) of billions of items with a fixed memory footprint of exactly 12 KB and a standard error of 0.81%. Storing 100 million user IDs in a standard Redis Set would consume over 1 GB of RAM; HyperLogLog does it in 12 KB when an approximate count is acceptable."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">Compare RDB snapshots vs AOF persistence in Redis.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "RDB takes periodic point-in-time binary snapshots using `bgsave`; it produces compact files that restart extremely fast, but risks losing minutes of data between snapshots. AOF logs every write command sequentially; it provides maximum durability (losing at most 1 second with `appendfsync everysec`), but results in larger files and slower restart recovery. Modern Redis uses Hybrid persistence combining both."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Why must you use a Lua script when releasing a distributed lock in Redis?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Releasing a lock requires checking if the lock value matches your random client token before running `DEL`. If you perform `GET` followed by `DEL` in separate commands, a network pause could cause your lock TTL to expire and another client to acquire it in between, leading you to accidentally delete the second client's lock. A Lua script executes atomically, ensuring you only delete your own lock."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the difference between Redis Hashes and JSON strings in terms of memory efficiency?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Storing small objects as Redis Hashes is significantly more memory-efficient because Redis encodes small hashes using compact Listpacks (ziplists), which eliminate pointer overhead. Furthermore, Hashes allow mutating or retrieving individual fields (`HSET`, `HGET`) without serializing, deserializing, and transmitting the entire JSON payload over the network."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is the difference between Redis Sentinel and Redis Cluster?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Redis Sentinel provides High Availability for a single-master replica topology: it monitors nodes, detects master failures, and automatically promotes a replica to master. Redis Cluster provides Horizontal Sharding across multiple master nodes using 16,384 hash slots, allowing datasets to scale beyond the RAM capacity of a single physical server."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is a Bloom Filter and how does it prevent Cache Penetration?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Bloom Filter is a space-efficient probabilistic data structure that tests set membership. It can return false positives (saying an element might exist when it does not), but never false negatives (if it says an element does not exist, it definitely does not). Placing it in front of Redis allows the system to reject queries for non-existent IDs instantly without hitting Redis or the database."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is the Redlock algorithm and what was Martin Kleppmann's critique of it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Redlock coordinates locks across \(N\) independent Redis masters without replication, requiring acquisition on a majority (\(N/2 + 1\)) before lock validity. Distributed systems researcher Martin Kleppmann critiqued Redlock, proving that in asynchronous networks with GC pauses or NTP clock jumps, a client can hold an expired lock while thinking it is valid. Kleppmann argued strong distributed safety requires monotonic fencing tokens verified at the storage layer."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What is the XFetch algorithm for probabilistic early expiration?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "XFetch is an optimal algorithm to eliminate Cache Stampedes. Instead of waiting for a key to expire, reading threads calculate a probabilistic formula based on remaining TTL, computation time \(\delta\), and a randomness parameter \(\beta\): \(- \beta \cdot \delta \cdot \ln(\text{rand()}) > \text{remainingTTL}\). As the key nears expiration, the probability of a background refresh increases, ensuring exactly one client refreshes the cache before it expires."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">How does Copy-on-Write (CoW) affect memory consumption during Redis BGSAVE?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`bgsave` calls the Linux `fork()` system call to spawn a child process sharing the parent's memory pages. If the parent receives heavy writes during snapshot generation, the OS copies each modified memory page. In worst-case heavy-write workloads, memory usage can momentarily double, risking out-of-memory kernel kills unless Linux `vm.overcommit_memory = 1` is configured."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What are Redis Hash Slots and how does consistent sharding work in Redis Cluster?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Redis Cluster divides the entire key space into exactly 16,384 Hash Slots. The slot for any key is computed as `CRC16(key) % 16384`. The slots are distributed among master nodes (e.g., Node A owns 0–5500). Using hash tags like `{user:42}:profile` and `{user:42}:orders` ensures multi-key operations map to the exact same hash slot and node."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What are Redis Streams and how do Consumer Groups differ from Pub/Sub?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Redis Pub/Sub is 'fire-and-forget': if a subscriber is offline or network drops, messages are lost forever. Redis Streams is a persistent append-only log. Consumer Groups allow multiple workers to cooperatively consume distinct messages from the same stream, tracking message delivery, pending entries (PEL), and acknowledgments (`XACK`) with full replayability."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you explain the trade-offs of caching to a junior engineer who wants to cache everything?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Caching is not free: it introduces distributed state synchronization complexity, stale data risks, memory costs, and cache invalidation challenges ('one of the two hard things in Computer Science'). We only cache data when there is a proven read bottleneck, clear data access skew (hot keys), and well-defined business tolerance for eventual consistency."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

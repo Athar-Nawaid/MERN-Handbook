@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 37: Linux and Command-Line Essentials | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master production Linux for full-stack developers: Filesystem hierarchy, permissions, process management (ps, top, kill), log analysis (grep, awk, sed), networking (ss, lsof, curl), and SSH administration.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="37">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VIII — DevOps, Deployment, and Production Readiness</div>
+          <h1 class="chapter-title">Chapter 37: Linux and Command-Line Essentials</h1>
+          <p class="chapter-lead">
+            The backend engineer’s operating system toolkit: Linux filesystem hierarchy, file permissions and octal arithmetic, process lifecycle management (PID 1, states, signals), standard streams and piping, production log extraction with grep, awk, and sed, networking diagnostics (ss, lsof, curl), system resource monitoring, and secure SSH tunneling.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Linux Systems</span>
+              <span class="meta-pill">CLI &amp; Log Analysis</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand the <strong>Linux Filesystem Hierarchy</strong> and the "Everything is a File" philosophy.</li>
+            <li>Calculate and apply <strong>File Permission Octals</strong> (<code>chmod 755</code>, <code>644</code>, <code>600</code>) and understand SUID, SGID, and Sticky Bits.</li>
+            <li>Master <strong>Process Inspection &amp; Signals</strong>: process states (R, S, D, Z), sending signals (<code>SIGTERM</code> vs <code>SIGKILL</code>), and managing background jobs.</li>
+            <li>Redirect standard streams (<code>stdin</code>, <code>stdout</code>, <code>stderr</code>) and pipe data streams across processes.</li>
+            <li>Diagnose production outages using the <strong>Log Analysis Toolkit</strong>: <code>tail -f</code>, <code>grep</code>, <code>awk</code>, <code>sed</code>, <code>sort</code>, and <code>uniq</code>.</li>
+            <li>Resolve blocked network ports and inspect open socket connections using <code>ss -tulpn</code> and <code>lsof -i :port</code>.</li>
+            <li>Interpret <strong>System Load Averages</strong> and memory metrics (<code>free -m</code>, buffer/cache) to pinpoint CPU vs I/O bottlenecks.</li>
+            <li>Configure secure <strong>SSH Key Authentication</strong> and local port forwarding tunnels.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Linux Filesystem Hierarchy &amp; Core Philosophy</h2>
+        <p>
+          Linux is founded on the Unix philosophy: <em>"Everything is a file."</em> Hardware devices, network sockets, physical disks, and kernel process metrics are all exposed as file streams in the virtual filesystem.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Directory</th>
+                <th>Standard Purpose &amp; Full-Stack Significance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>/etc</code></td>
+                <td>System-wide configuration files (e.g., <code>/etc/nginx/nginx.conf</code>, <code>/etc/hosts</code>, <code>/etc/systemd/system/</code>).</td>
+              </tr>
+              <tr>
+                <td><code>/var/log</code></td>
+                <td>Persistent system and application log files (e.g., <code>/var/log/nginx/access.log</code>, <code>/var/log/syslog</code>).</td>
+              </tr>
+              <tr>
+                <td><code>/proc</code></td>
+                <td>Virtual filesystem generated in memory by the Linux kernel; contains real-time runtime state for processes (e.g., <code>/proc/cpuinfo</code>, <code>/proc/meminfo</code>, <code>/proc/[pid]/</code>).</td>
+              </tr>
+              <tr>
+                <td><code>/tmp</code></td>
+                <td>Temporary files accessible by all users; wiped on reboot. Protected by the <strong>Sticky Bit</strong>.</td>
+              </tr>
+              <tr>
+                <td><code>/dev</code></td>
+                <td>Device nodes representing hardware and pseudo-devices (e.g., <code>/dev/null</code> black hole, <code>/dev/urandom</code> cryptographically secure random bytes).</td>
+              </tr>
+              <tr>
+                <td><code>/usr/bin</code></td>
+                <td>Standard user executable command binaries (e.g., <code>node</code>, <code>npm</code>, <code>git</code>, <code>curl</code>).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. File Permissions &amp; Octal Arithmetic</h2>
+        <p>
+          Every file and directory in Linux has an ownership tuple: a <strong>User Owner</strong>, a <strong>Group Owner</strong>, and permissions for <strong>Others</strong>.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Linux File Permission Triad</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">  File Type: '-' = file, 'd' = directory, 'l' = symlink
+  |
+  |  [User Owner]    [Group Owner]    [Others (World)]
+  |    r  w  x         r  -  x         r  -  -
+  v   (4+ 2+ 1)       (4+ 0+ 1)       (4+ 0+ 0)
+  -      7               5               4        --&gt; Octal: 754
+
+  r (Read)    = 4 : View file content / List directory entries
+  w (Write)   = 2 : Modify file content / Create or delete files in directory
+  x (Execute) = 1 : Execute binary/script / 'cd' into directory</code></pre>
+        </div>
+
+        <h3>Standard Production Permission Presets</h3>
+        <ul>
+          <li><code>chmod 644 file.txt</code>: Owner can read/write; Group and Others can only read. (Default for web files, source code).</li>
+          <li><code>chmod 755 script.sh</code>: Owner can read/write/execute; Group and Others can read/execute. (Default for directories and executables).</li>
+          <li><code>chmod 600 id_ed25519</code>: Owner can read/write; zero access for Group and Others. (Mandatory for private SSH keys; SSH clients refuse keys with looser permissions!).</li>
+          <li><code>chmod 700 ~/.ssh</code>: Owner can read/write/cd; completely private. (Standard for SSH configuration directories).</li>
+        </ul>
+
+        <!-- Section 3 -->
+        <h2>3. Process Management: States, Signals, and Systemd</h2>
+        <p>
+          Every process in Linux is assigned a unique <strong>PID (Process ID)</strong>. The root ancestor of all user-space processes is <strong>PID 1</strong> (typically <code>systemd</code> in modern Linux distributions).
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Process State</th>
+                <th>Indicator Code</th>
+                <th>Operating System State &amp; Meaning</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Running / Runnable</strong></td>
+                <td><code>R</code></td>
+                <td>Actively executing on CPU or waiting in the scheduler CPU run queue.</td>
+              </tr>
+              <tr>
+                <td><strong>Interruptible Sleep</strong></td>
+                <td><code>S</code></td>
+                <td>Waiting for an event or I/O (e.g., Node.js event loop waiting for incoming network connections). Responds to signals.</td>
+              </tr>
+              <tr>
+                <td><strong>Uninterruptible Sleep</strong></td>
+                <td><code>D</code></td>
+                <td>Waiting on direct hardware disk or NFS I/O. <strong>Cannot be killed by any signal</strong>, including <code>kill -9</code>!</td>
+              </tr>
+              <tr>
+                <td><strong>Zombie</strong></td>
+                <td><code>Z</code></td>
+                <td>Terminated execution, but its parent process has not yet read its exit code via the <code>wait()</code> system call. Consumes no CPU/RAM, but consumes a PID slot.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Signals: Terminating and Reloading Processes</h3>
+        <ul>
+          <li><strong><code>kill -15 &lt;PID&gt;</code> (SIGTERM - Default):</strong> Politely requests the process to terminate. The process can catch this signal to close database connections, finish in-flight HTTP requests, and execute graceful shutdown logic.</li>
+          <li><strong><code>kill -9 &lt;PID&gt;</code> (SIGKILL):</strong> Handled directly by the Linux kernel; instantly terminates the process. The process <strong>cannot catch or ignore SIGKILL</strong>. Leaves open file locks and unfinished transactions; use only as a last resort.</li>
+          <li><strong><code>kill -1 &lt;PID&gt;</code> (SIGHUP):</strong> Hangup signal. Conventionally used by daemons like Nginx to reload configuration files without dropping active connections.</li>
+        </ul>
+
+        <h3>Production Systemd Service Unit</h3>
+        <p>
+          In cloud environments without Docker, Node.js applications are managed via <code>systemd</code> service units to ensure automatic boot restart, environment variable injection, and non-root execution:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">INI: /etc/systemd/system/myapp.service</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-ini">[Unit]
+Description=Production Node.js API Service
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=node
+WorkingDirectory=/var/www/myapp
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production PORT=3000
+EnvironmentFile=/etc/myapp/.env
+
+# Security Sandbox Hardening
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Standard Streams, Redirection, and Piping</h2>
+        <p>
+          Every Linux process opens three standard file descriptors:
+        </p>
+        <ul>
+          <li><strong><code>stdin</code> (FD 0):</strong> Standard input (keyboard or piped data).</li>
+          <li><strong><code>stdout</code> (FD 1):</strong> Standard output (terminal display).</li>
+          <li><strong><code>stderr</code> (FD 2):</strong> Standard error (error logging).</li>
+        </ul>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">Bash: Redirection and Piping Patterns</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-bash"># Overwrite stdout to a file
+node app.js &gt; output.log
+
+# Append stdout to a file
+node app.js &gt;&gt; output.log
+
+# Redirect stderr only to error.log
+node app.js 2&gt; error.log
+
+# Combine stdout AND stderr into the same file
+node app.js &gt; app.log 2&gt;&amp;1
+
+# Discard all output completely (silent run)
+node app.js &gt; /dev/null 2&gt;&amp;1
+
+# Piping: output of command A becomes input of command B
+cat /var/log/nginx/access.log | grep &quot; 500 &quot; | wc -l</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. The Log Analysis Toolkit: grep, awk, and sed</h2>
+        <p>
+          When an incident occurs in production, senior engineers rely on command-line text stream processing tools to extract insights from massive gigabyte log files in seconds without opening slow text editors:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Tool</th>
+                <th>Core Capability</th>
+                <th>Essential Production Command Example</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong><code>tail</code></strong></td>
+                <td>Output the last part of files; follow live stream.</td>
+                <td><code>tail -f -n 100 /var/log/nginx/error.log</code> (Stream live errors in real time).</td>
+              </tr>
+              <tr>
+                <td><strong><code>grep</code></strong></td>
+                <td>Pattern search using regular expressions.</td>
+                <td><code>grep -rn "Database connection timeout" /var/log/app/</code> (Recursive search with line numbers).</td>
+              </tr>
+              <tr>
+                <td><strong><code>awk</code></strong></td>
+                <td>Column-oriented pattern scanning and processing language.</td>
+                <td><code>awk '$9 >= 500 { print $1, $7, $9 }' access.log</code> (Prints IP, path, and status code for all 5xx errors).</td>
+              </tr>
+              <tr>
+                <td><strong><code>sed</code></strong></td>
+                <td>Stream editor for filtering and transforming text.</td>
+                <td><code>sed -i 's/OLD_HOST/NEW_HOST/g' config.env</code> (In-place global find-and-replace).</td>
+              </tr>
+              <tr>
+                <td><strong><code>sort &amp; uniq</code></strong></td>
+                <td>Sort lines and report duplicate counts.</td>
+                <td><code>sort | uniq -c | sort -nr</code> (Count and rank occurrences descending).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Networking Diagnostics: ss, lsof, and curl</h2>
+        
+        <h3>Finding Which Process Owns a Port</h3>
+        <p>
+          A frequent local and production error is: <code>Error: listen EADDRINUSE: address already in use :::3000</code>.
+        </p>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">Bash: Diagnosing and Freeing Blocked Ports</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-bash"># Method 1: Using lsof (List Open Files)
+lsof -i :3000
+# Output:
+# COMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+# node    14520 alex   22u  IPv6 123456      0t0  TCP *:3000 (LISTEN)
+
+# Kill the rogue process holding port 3000:
+kill -15 14520
+
+# Method 2: Using ss (Socket Statistics - modern netstat replacement)
+ss -tulpn | grep :3000
+# -t = TCP, -u = UDP, -l = listening, -p = show process, -n = numeric ports</code></pre>
+        </div>
+
+        <h3>API Testing with <code>curl</code></h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">Bash: Production curl Diagnostic Commands</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-bash"># Inspect HTTP response headers only (-I)
+curl -I https://api.myapp.com/healthz
+
+# Measure total latency Breakdown (-w)
+curl -o /dev/null -s -w &quot;DNS: %{time_namelookup}s | Connect: %{time_connect}s | TTFB: %{time_starttransfer}s | Total: %{time_total}s\n&quot; https://api.myapp.com
+
+# Send POST JSON payload
+curl -X POST https://api.myapp.com/v1/orders \
+  -H &quot;Content-Type: application/json&quot; \
+  -H &quot;Authorization: Bearer secret_token&quot; \
+  -d &#39;{&quot;items&quot;:[{&quot;id&quot;:&quot;p1&quot;,&quot;qty&quot;:2}]}&#39;</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. System Resources &amp; Load Averages</h2>
+        <p>
+          Running <code>uptime</code> displays three load average numbers:
+          <code>load average: 2.10, 1.45, 0.85</code>.
+          These represent the average number of processes in the <strong>Runnable (R)</strong> or <strong>Uninterruptible Sleep (D)</strong> state over the last <strong>1, 5, and 15 minutes</strong>.
+        </p>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">💡 How to Interpret Load Average Relative to CPU Cores</div>
+          <p>
+            A load average must always be evaluated relative to the server’s total CPU core count (found via <code>nproc</code>):
+            <ul>
+              <li>On a <strong>4-core server</strong>: A load of <code>4.00</code> means 100% capacity utilization. Every core is fully saturated, but no processes are waiting.</li>
+              <li>A load of <code>8.00</code> on 4 cores means the system is overloaded by 100%: for every process running, another process is waiting for CPU time!</li>
+              <li>A high load average accompanied by <strong>low CPU usage</strong> indicates an <strong>I/O bottleneck</strong>: processes are stuck in state <code>D</code> waiting on slow disks or network file storage.</li>
+            </ul>
+          </p>
+        </div>
+
+        <!-- Section 8 -->
+        <h2>8. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Top 10 IP Addresses Causing 500 Errors Pipeline</h3>
+        <p>
+          <strong>Scenario:</strong> You are investigating an ongoing incident. Construct a bash one-liner that parses an Nginx access log (format: <code>$remote_addr - - [$time] "$request" $status ...</code>), extracts client IPs for all requests with status code <code>500</code>, counts occurrences, and prints the top 5 offending IPs.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">Bash One-Liner</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-bash"># In standard Nginx logs: Column 1 is IP, Column 9 is HTTP status
+awk &#39;$9 == 500 { print $1 }&#39; /var/log/nginx/access.log | sort | uniq -c | sort -nr | head -n 5
+
+# Explanation:
+# 1. awk filters rows where status ($9) is 500 and prints the client IP ($1)
+# 2. sort prepares identical IPs for grouping
+# 3. uniq -c collapses duplicates and prefixes each line with its frequency count
+# 4. sort -nr sorts numerically descending
+# 5. head -n 5 limits output to the top 5 worst offenders</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: SSH Port Forwarding Tunnel</h3>
+        <p>
+          <strong>Scenario:</strong> A production PostgreSQL database is locked inside an AWS private VPC subnet without public internet access. You have SSH bastion server access (<code>bastion.myapp.com</code>) on port 22. Write the command to tunnel your local port <code>5433</code> to the private database <code>db.internal:5432</code> through the bastion.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">Bash Command</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-bash"># Local port forwarding syntax: ssh -L [local_port]:[target_host]:[target_port] [user]@[bastion]
+ssh -N -L 5433:db.internal:5432 ubuntu@bastion.myapp.com -i ~/.ssh/id_ed25519
+
+# Flags:
+# -N = Do not execute a remote command (port forwarding only)
+# -L = Local port forward
+# Now you can connect to localhost:5433 using pgAdmin or psql!</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 9: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>9. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering Linux file permissions, process states, signals, log parsing, networking CLI, and system resource troubleshooting.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What does the permission octal 755 mean on a Linux file or directory?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In 755: the first digit (7 = 4+2+1) grants the user owner Read, Write, and Execute permissions. The second digit (5 = 4+0+1) grants members of the file's group Read and Execute permissions. The third digit (5 = 4+0+1) grants all other users Read and Execute permissions. It is the standard permission setting for directories and public executables."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is the difference between kill -9 (SIGKILL) and kill -15 (SIGTERM)?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "SIGTERM (15) is a graceful termination request: the process can catch this signal to finish active HTTP requests, flush buffers, close database connections, and shut down cleanly. SIGKILL (9) is handled directly by the Linux kernel and terminates the process immediately without notification; the process cannot intercept or handle SIGKILL."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">How do you find which process is currently listening on port 3000?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I use `lsof -i :3000` or `ss -tulpn | grep :3000`. Both commands display the Process Name, User, and the exact PID listening on the socket, allowing you to gracefully terminate it using `kill <PID>`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What does 2>&1 mean in Linux command redirection?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "It redirects Standard Error (file descriptor 2) to the same destination as Standard Output (file descriptor 1). When placed after `> output.log`, both regular console logs and error streams are merged into the same log file."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is the difference between piping (|) and redirection (>)?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Redirection (`>`) takes the output stream of a command and writes it to a file or device. Piping (`|`) connects the Standard Output of one command directly to the Standard Input of another command in memory via a kernel buffer, enabling command chaining without creating intermediate temporary files."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What is a Zombie Process in Linux and how do you resolve it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Zombie process (state `Z`) has completed execution, but its parent process has not yet reaped its exit status using the `wait()` system call. Zombies consume no CPU or memory, but consume a slot in the operating system process table. You cannot kill a zombie with `kill -9` because it is already dead; you must kill its parent process or restart the parent so PID 1 adopts and reaps it."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">How do you interpret Load Average values (e.g. 1.0, 5.0, 15.0) on uptime?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Load average represents the average number of processes in the runnable state (`R`) or uninterruptible sleep state (`D`) over 1, 5, and 15-minute intervals. It must be compared against the number of CPU cores (`nproc`). On a 4-core machine, a load of 4.0 indicates 100% saturation. A load of 8.0 indicates 100% overload with tasks queuing for CPU time."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is the difference between buffer and cache in the free -m command?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Buffers store raw block device metadata waiting to be written to disk. Page Cache caches recently read and written file data in unused RAM to accelerate future disk reads. Linux uses available RAM aggressively for page caching, but instantly releases it to applications when memory is demanded. A system showing low 'free' memory but high 'available' memory is completely healthy."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is the Sticky Bit on Linux directories and where is it used?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Sticky Bit (indicated by a `t` in permissions, e.g. `drwxrwxrwt`) restricts file deletion within a shared directory. In directories like `/tmp` where all users have write permissions, the sticky bit prevents one user from deleting or renaming files owned by another user. Only the file owner, the directory owner, or root can delete the file."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">Why must private SSH keys have file permissions set to 600?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`chmod 600` ensures that only the file owner has read and write permissions, preventing other local users or compromised processes on the system from reading your private key. OpenSSH clients enforce this security check strictly: if a private key has permissions accessible by group or others (like `644`), SSH will refuse to use the key and abort the connection."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">How do you stream and filter live production logs for specific keywords?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Use `tail -f /var/log/app/server.log | grep --line-buffered -i 'error\\|fatal\\|exception'`. The `--line-buffered` flag ensures that grep flushes matched lines immediately to the console rather than buffering them in memory, allowing real-time monitoring of production anomalies."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the difference between df -h and du -sh?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`df -h` (Disk Free) inspects mounted filesystems from the superblock, reporting total capacity, used space, and percentage free across disk partitions. `du -sh` (Disk Usage) recursively scans specific directories or files, calculating the exact byte space consumed by that specific directory tree on disk."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">How do you run a Node.js process in the background and keep it running after logging out?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "For quick ad-hoc jobs, use `nohup node server.js > app.log 2>&1 &`. `nohup` ignores the SIGHUP signal sent when the SSH terminal closes, and `&` puts the process into the background. For production, however, always manage processes via a system supervisor like `systemd` or PM2 to ensure auto-restart on crashes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is Time To First Byte (TTFB) and how do you measure it with curl?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "TTFB measures the duration from when the client dispatches the request until the first byte of response data arrives from the server, indicating server processing and network latency. We measure it using: `curl -o /dev/null -s -w '%{time_starttransfer}\\n' https://api.myapp.com`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What does the process state 'D' (Uninterruptible Sleep) mean and why is it dangerous?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "State 'D' means the process is waiting on kernel device driver I/O—typically physical disk access, slow NFS mounts, or corrupted hardware. The kernel blocks all signal delivery to processes in state D to prevent filesystem corruption; thus, even `kill -9` cannot terminate them. If many processes pile up in state D, load average skyrockets and the server may require a hardware reboot."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">Why can a deleted log file still consume disk space according to df -h?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In Linux, removing a file unlinks its directory entry, but the inode and data blocks are only freed when all open file descriptors referencing that file are closed. If an active process (like Node.js or Nginx) continues holding an open handle to `access.log`, the disk blocks remain allocated. Running `lsof | grep deleted` identifies the process; restarting or reloading the process frees the disk space."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is SSH Local Port Forwarding vs Remote Port Forwarding?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Local Port Forwarding (`ssh -L 8080:internal.db:5432 user@bastion`) opens a listening port on your local machine and tunnels traffic through SSH to access a private remote service. Remote Port Forwarding (`ssh -R 9000:localhost:3000 user@server`) opens a port on the remote server and tunnels incoming remote connections back to your local development machine (useful for testing external webhooks)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">How does Linux Page Cache accelerate web server performance?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "When Nginx serves static HTML, images, or assets, the Linux kernel copies those files from disk into the RAM Page Cache. Subsequent requests for those files read directly from RAM at gigabytes per second with zero disk I/O. Furthermore, system calls like `sendfile()` transfer data directly from the kernel Page Cache to the network socket descriptor without copying bytes to user-space memory."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is the difference between hard links and soft (symbolic) links?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Hard Link is an additional directory entry pointing directly to the exact same underlying inode on the filesystem; deleting the original file keeps the data intact as long as one hard link remains. A Symbolic Link (symlink, `ln -s`) is a special pointer file containing the text path to another file; if the target file is deleted or moved, the symlink becomes broken."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you triage a production Linux server that is completely unresponsive to SSH?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "First, check cloud console metrics (AWS EC2 / GCP) to see if CPU is at 100%, memory is exhausted (triggering kernel OOM panic), or disk I/O is saturated. If the cloud serial console or Out-of-Band management is accessible, check kernel ring buffer messages (`dmesg`). If totally frozen due to thrashing, execute a hard instance reboot from the cloud console and inspect `/var/log/syslog` post-recovery."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

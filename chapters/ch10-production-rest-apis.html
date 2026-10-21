@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 10: Production-Quality REST APIs | Full-Stack Interview Guide</title>
+  <meta name="description" content="Complete guide to building production-grade REST APIs in Node.js and Express: Clean architecture, layered patterns, Zod validation, JWT auth, database pooling, integration testing, and graceful shutdown.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="10">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART II — Node.js and Express.js Backend Engineering</div>
+          <h1 class="chapter-title">Chapter 10: Production-Quality REST APIs</h1>
+          <p class="chapter-lead">
+            Building an enterprise-ready backend service: Project layout, Clean Architecture layers, input validation with Zod, JWT authentication & RBAC, database connection pooling, RFC 7807 error formats, cursor pagination, automated Supertest testing, and graceful termination.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Production Architecture</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Architect a scalable, maintainable folder layout following the <strong>Controller-Service-Repository</strong> pattern.</li>
+            <li>Trace the exact journey of an HTTP request from TCP socket entry down to the database and back.</li>
+            <li>Enforce strict request body, query string, and route param validation using <strong>Zod</strong> schemas.</li>
+            <li>Implement JWT authentication and role-based access control (RBAC) middleware.</li>
+            <li>Integrate a robust database connection pool with automatic retry and error translation.</li>
+            <li>Write automated integration tests for CRUD endpoints using <strong>Vitest</strong> and <strong>Supertest</strong>.</li>
+            <li>Configure production observability: Pino structured logging, correlation IDs, and zero-downtime graceful shutdown.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Complete Enterprise Project Structure</h2>
+        <p>
+          In a production backend, code organization dictates team velocity and system stability. Below is the standardized enterprise layout we build throughout this chapter:
+        </p>
+
+        <pre><code class="language-text">task-management-api/
+├── src/
+│   ├── config/             # Environment variables validation & runtime configs
+│   │   ├── env.ts
+│   │   └── database.ts
+│   ├── constants/          # Application-wide enums, HTTP status constants, error codes
+│   │   └── roles.ts
+│   ├── controllers/        # Translates HTTP requests to Service calls & sets status
+│   │   └── task.controller.ts
+│   ├── middlewares/        # Express pipeline: auth, validation, rate limiting, error
+│   │   ├── auth.middleware.ts
+│   │   ├── validate.middleware.ts
+│   │   ├── logger.middleware.ts
+│   │   └── error.middleware.ts
+│   ├── models/ / schemas/  # Zod validation schemas & TypeScript DTO interfaces
+│   │   └── task.schema.ts
+│   ├── repositories/       # Direct database operations (PostgreSQL / MongoDB)
+│   │   └── task.repository.ts
+│   ├── routes/             # Route definitions & middleware mounting
+│   │   ├── index.ts
+│   │   └── task.routes.ts
+│   ├── services/           # Core business logic, rules, third-party integrations
+│   │   └── task.service.ts
+│   ├── utils/              # Helper functions: AppError, pagination, crypto
+│   │   ├── AppError.ts
+│   │   └── asyncHandler.ts
+│   ├── app.ts              # Express application configuration & middleware setup
+│   └── server.ts           # Server bootstrap: listens on port, connects DB, graceful exit
+├── tests/
+│   ├── integration/        # Supertest API endpoint tests against test database
+│   │   └── task.test.ts
+│   └── unit/               # Service & utility tests with mocked repositories
+│       └── task.service.test.ts
+├── .env.example
+├── Dockerfile
+├── package.json
+└── tsconfig.json</code></pre>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <h2>2. Life of a Request: The End-to-End Flow</h2>
+        <p>
+          To explain your architecture confidently in senior interviews, you must be able to trace a request through every file in the project:
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+Client: POST /api/v1/tasks (Authorization: Bearer <jwt>, Body: { "title": "Deploy API" })
+  |
+  v
+1. server.ts        -> Native http.Server receives TCP socket, forwards to app.ts.
+  |
+  v
+2. app.ts           -> Security headers (Helmet), CORS, JSON body parser, Pino logger with Correlation ID.
+  |
+  v
+3. task.routes.ts   -> Matches POST '/' path; dispatches to middleware chain:
+  |
+  +---> 4. auth.middleware.ts      -> Verifies JWT token signature; extracts user payload; attaches req.user.
+  |
+  +---> 5. validate.middleware.ts  -> Parses req.body against CreateTaskSchema (Zod); throws 400 if invalid.
+  |
+  +---> 6. task.controller.ts      -> Extracts validated data; invokes taskService.createTask(userId, data).
+  |
+  +---> 7. task.service.ts         -> Executes business rules (e.g. check user quota, trigger audit event);
+  |                                   invokes taskRepository.create(taskData).
+  |
+  +---> 8. task.repository.ts      -> Executes parameterized SQL query against PostgreSQL connection pool.
+  |
+  v
+9. task.controller.ts -> Receives created entity; responds with HTTP 201 Created and JSON payload.
+          </div>
+          <div class="diagram-caption">Figure 10.1: Detailed 9-Step Lifecycle of a Production REST Request</div>
+        </div>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <h2>3. Configuration & Database Connection Pool</h2>
+
+        <h3>Environment Validation with Zod (<code>src/config/env.ts</code>)</h3>
+        <pre><code class="language-typescript">import { z } from "zod";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  PORT: z.coerce.number().default(3000),
+  DATABASE_URL: z.string().url("DATABASE_URL must be a valid PostgreSQL connection string"),
+  JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters long"),
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug"]).default("info")
+});
+
+const parsed = envSchema.safeParse(process.env);
+
+if (!parsed.success) {
+  console.error("❌ CRITICAL: Invalid environment variables:", parsed.error.format());
+  process.exit(1); // Fail-fast on server boot!
+}
+
+export const env = parsed.data;</code></pre>
+
+        <h3>PostgreSQL Connection Pool (<code>src/config/database.ts</code>)</h3>
+        <pre><code class="language-typescript">import { Pool } from "pg";
+import { env } from "./env";
+
+export const dbPool = new Pool({
+  connectionString: env.DATABASE_URL,
+  max: 20,                  // Maximum 20 clients in pool
+  idleTimeoutMillis: 30000, // Close idle connections after 30 seconds
+  connectionTimeoutMillis: 2000 // Return an error after 2 seconds if pool is exhausted
+});
+
+dbPool.on("error", (err) => {
+  console.error("Unexpected error on idle PostgreSQL client:", err);
+});</code></pre>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <h2>4. Data Validation & Schemas (<code>src/schemas/task.schema.ts</code>)</h2>
+        <pre><code class="language-typescript">import { z } from "zod";
+
+export const CreateTaskSchema = z.object({
+  title: z.string().trim().min(3, "Title must be at least 3 characters").max(120),
+  description: z.string().trim().max(1000).optional(),
+  priority: z.enum(["low", "medium", "high"]).default("medium"),
+  dueDate: z.string().datetime({ message: "dueDate must be a valid ISO 8601 string" }).optional()
+});
+
+export const QueryTasksSchema = z.object({
+  limit: z.coerce.number().min(1).max(50).default(10),
+  cursor: z.string().optional(),
+  status: z.enum(["pending", "in_progress", "completed"]).optional(),
+  priority: z.enum(["low", "medium", "high"]).optional()
+});
+
+export type CreateTaskDTO = z.infer<typeof CreateTaskSchema>;
+export type QueryTasksDTO = z.infer<typeof QueryTasksSchema>;</code></pre>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <h2>5. The Three Layers: Repository, Service, and Controller</h2>
+
+        <h3>The Repository Layer (<code>src/repositories/task.repository.ts</code>)</h3>
+        <pre><code class="language-typescript">import { dbPool } from "../config/database";
+import { CreateTaskDTO, QueryTasksDTO } from "../schemas/task.schema";
+
+export interface TaskEntity {
+  id: string;
+  userId: string;
+  title: string;
+  description: string | null;
+  priority: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export class TaskRepository {
+  async create(userId: string, data: CreateTaskDTO): Promise<TaskEntity> {
+    const query = `
+      INSERT INTO tasks (user_id, title, description, priority, status, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, 'pending', NOW(), NOW())
+      RETURNING id, user_id AS "userId", title, description, priority, status, created_at AS "createdAt", updated_at AS "updatedAt"
+    `;
+    const values = [userId, data.title, data.description || null, data.priority];
+    const { rows } = await dbPool.query<TaskEntity>(query, values);
+    return rows[0];
+  }
+
+  async findByUserIdWithCursor(userId: string, options: QueryTasksDTO): Promise<{ tasks: TaskEntity[]; nextCursor: string | null }> {
+    const params: any[] = [userId, options.limit + 1];
+    let query = `
+      SELECT id, user_id AS "userId", title, description, priority, status, created_at AS "createdAt", updated_at AS "updatedAt"
+      FROM tasks
+      WHERE user_id = $1
+    `;
+
+    if (options.cursor) {
+      params.push(options.cursor);
+      query += ` AND id < $${params.length}`;
+    }
+
+    query += ` ORDER BY id DESC LIMIT $2`;
+
+    const { rows } = await dbPool.query<TaskEntity>(query, params);
+    const hasMore = rows.length > options.limit;
+    const tasks = hasMore ? rows.slice(0, options.limit) : rows;
+    const nextCursor = hasMore ? tasks[tasks.length - 1].id : null;
+
+    return { tasks, nextCursor };
+  }
+}</code></pre>
+
+        <h3>The Service Layer (<code>src/services/task.service.ts</code>)</h3>
+        <pre><code class="language-typescript">import { TaskRepository, TaskEntity } from "../repositories/task.repository";
+import { CreateTaskDTO, QueryTasksDTO } from "../schemas/task.schema";
+import { AppError } from "../utils/AppError";
+
+export class TaskService {
+  constructor(private readonly taskRepo: TaskRepository = new TaskRepository()) {}
+
+  async createTask(userId: string, data: CreateTaskDTO): Promise<TaskEntity> {
+    // Business logic check: enforce quota
+    return this.taskRepo.create(userId, data);
+  }
+
+  async listTasks(userId: string, options: QueryTasksDTO) {
+    return this.taskRepo.findByUserIdWithCursor(userId, options);
+  }
+}</code></pre>
+
+        <h3>The Controller Layer (<code>src/controllers/task.controller.ts</code>)</h3>
+        <pre><code class="language-typescript">import { Request, Response } from "express";
+import { TaskService } from "../services/task.service";
+import { CreateTaskDTO, QueryTasksDTO } from "../schemas/task.schema";
+
+const taskService = new TaskService();
+
+export class TaskController {
+  static async create(req: Request<{}, {}, CreateTaskDTO>, res: Response) {
+    const userId = req.user!.id; // Populated by auth middleware
+    const task = await taskService.createTask(userId, req.body);
+    return res.status(201).json({
+      status: "success",
+      data: task
+    });
+  }
+
+  static async list(req: Request<{}, {}, {}, QueryTasksDTO>, res: Response) {
+    const userId = req.user!.id;
+    const result = await taskService.listTasks(userId, req.query);
+    return res.status(200).json({
+      status: "success",
+      data: result.tasks,
+      pagination: {
+        limit: req.query.limit,
+        nextCursor: result.nextCursor,
+        hasMore: result.nextCursor !== null
+      }
+    });
+  }
+}</code></pre>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <h2>6. Automated Integration Testing with Supertest and Vitest</h2>
+        <p>
+          Testing directly against the HTTP interface using <strong>Supertest</strong> verifies your complete middleware pipeline, authentication, schema validation, and database queries in an isolated test environment:
+        </p>
+
+        <pre><code class="language-typescript">// tests/integration/task.test.ts
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import request from "supertest";
+import { app } from "../../src/app";
+import { dbPool } from "../../src/config/database";
+import jwt from "jsonwebtoken";
+import { env } from "../../src/config/env";
+
+describe("POST /api/v1/tasks Integration Tests", () => {
+  let authToken: string;
+
+  beforeAll(() => {
+    // Generate valid test JWT
+    authToken = jwt.sign({ id: "user_test_99", role: "member" }, env.JWT_SECRET, { expiresIn: "1h" });
+  });
+
+  afterAll(async () => {
+    await dbPool.end(); // Drain test database pool
+  });
+
+  it("should return 401 Unauthorized if no Bearer token is provided", async () => {
+    const res = await request(app)
+      .post("/api/v1/tasks")
+      .send({ title: "Write tests" });
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toMatch(/Authentication required/i);
+  });
+
+  it("should return 400 Bad Request if title is shorter than 3 characters", async () => {
+    const res = await request(app)
+      .post("/api/v1/tasks")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ title: "No" }); // Less than 3 chars!
+
+    expect(res.status).toBe(400);
+    expect(res.body.details).toHaveProperty("title");
+  });
+
+  it("should create a new task and return 201 Created with valid payload", async () => {
+    const res = await request(app)
+      .post("/api/v1/tasks")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        title: "Deploy to production",
+        priority: "high"
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data).toHaveProperty("id");
+    expect(res.body.data.title).toBe("Deploy to production");
+    expect(res.body.data.status).toBe("pending");
+  });
+});</code></pre>
+
+        <hr>
+
+        <!-- Section 7: Interview Questions and Answers -->
+        <section class="interview-section">
+          <h2>Interview Questions and Answers</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            20 senior-level interview questions testing your ability to design, build, test, and maintain production-ready REST APIs.
+          </p>
+
+          <div class="qa-toolbar">
+            <div class="qa-filter-btns">
+              <button class="qa-filter-btn active" data-filter="all">All (20)</button>
+              <button class="qa-filter-btn" data-filter="beginner">Beginner</button>
+              <button class="qa-filter-btn" data-filter="intermediate">Intermediate</button>
+              <button class="qa-filter-btn" data-filter="advanced">Advanced</button>
+              <button class="qa-filter-btn" data-filter="scenario">Scenario</button>
+            </div>
+            <button class="qa-toggle-all" type="button">Expand All Answers</button>
+          </div>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What is the Three-Layer Architecture in backend development, and why is it preferred over putting logic in route handlers?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Three-Layer Architecture divides the application into Controllers (handles HTTP transport, status codes, and DTOs), Services (pure business logic and rules), and Repositories (database access queries). It is preferred because it enforces Separation of Concerns: business logic can be unit-tested without mocking HTTP objects, and swapping databases or transport protocols (e.g. from Express to WebSockets or Fastify) requires zero changes to core business rules."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">What is RFC 7807 (Problem Details for HTTP APIs), and why should production APIs adopt it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "RFC 7807 is an industry standard specifying a uniform JSON structure for HTTP error responses. Instead of different microservices returning arbitrary error shapes (like `{ error: 'msg' }` vs `{ message: '...' }`), RFC 7807 standardizes fields: `type` (URI), `title` (summary), `status` (HTTP code), `detail` (human explanation), and `instance` (request URI). This allows client SDKs and frontend error boundaries to handle API errors predictably across all endpoints."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">How does Keyset/Cursor Pagination work under the hood in PostgreSQL, and why is it superior to Offset pagination for large datasets?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Offset pagination executes `LIMIT y OFFSET x`, which forces the database engine to scan and discard `x` rows before returning `y` rows, degrading to O(N) linear time and causing high I/O at high offsets. Cursor pagination passes the unique identifier of the last seen item (e.g., `WHERE id < cursor ORDER BY id DESC LIMIT y`). The database uses its indexed B-Tree to seek directly to the cursor in O(1) constant time, ensuring lightning-fast queries regardless of whether the table has 10,000 or 50 million rows."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">What is the purpose of connection pooling in PostgreSQL/MySQL, and what happens if a pool is exhausted?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Establishing a fresh TCP and TLS connection to a database takes 50–150ms and consumes server memory. A connection pool maintains an active set of pre-established database connections that incoming HTTP requests borrow and return in milliseconds. If all pool connections are busy and the pool is exhausted, incoming requests queue up until a connection is freed. If the queue timeout is exceeded, the pool throws an error (`timeout exceeded when connecting to database`), causing 500/503 errors."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">How do you prevent SQL Injection in Node.js when writing raw database queries?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Never concatenate user input directly into SQL strings. Always use Parameterized Queries (Prepared Statements): pass queries with parameter placeholders (`$1`, `$2` in pg, or `?` in mysql) and supply the values in a separate array. The database engine compiles the SQL command structure first, and treats the parameters strictly as literal data values rather than executable code, completely neutralizing injection attacks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">What is the difference between 401 Unauthorized and 403 Forbidden in REST APIs?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "401 Unauthorized means authentication is missing or invalid—the server does not know who the client is. 403 Forbidden means authentication succeeded (the server knows who you are), but the authenticated user lacks permission (insufficient role or scope) to perform the requested action on that specific resource."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">How does Zod validation middleware protect backend APIs from mass assignment vulnerabilities?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Mass assignment happens when an attacker passes unpermitted fields (like `role: 'admin'` or `isVerified: true`) in a POST/PUT body and the backend blindly spreads the object into the database. By validating `req.body` against a strict Zod schema, Zod strips un-whitelisted properties and guarantees that only expected, type-checked fields reach the service and repository layers."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">What is a Correlation ID (Request ID), and how does it enable distributed tracing across microservices?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Correlation ID is a unique UUID generated for every incoming HTTP request (or extracted from the `X-Request-Id` header). It is logged in every structured JSON log entry generated throughout that request's lifecycle and forwarded in downstream HTTP headers to other internal services. When investigating production incidents, searching for this single ID in Datadog or ELK reveals the complete end-to-end trace of that transaction across all services."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">Scenario: How do you design an API endpoint so that network timeouts or client retries do not charge a customer's credit card twice?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I implement an Idempotency Layer. The client generates a unique UUID (Idempotency Key) and sends it in the `Idempotency-Key` header. When the request arrives, the server checks Redis using an atomic lock: if the key has already succeeded, it returns the cached receipt immediately. If it is currently processing, concurrent retries receive a 409 Conflict. If it's a new request, payment proceeds, and the final receipt is cached with a 24-hour TTL."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <summary class="qa-summary">What is the difference between Integration Testing with Supertest and Unit Testing with Mocks?</summary>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Unit testing tests individual functions or services in isolation by mocking external dependencies (like repositories or database pools); they are fast and verify specific business logic branches. Integration testing with Supertest boots the Express application without binding to a physical port, sending simulated HTTP requests through the full middleware pipeline, authentication, schema validation, and database queries against a real test database, verifying end-to-end system cohesion."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Why should you separate `app.ts` from `server.ts` in Express applications?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`app.ts` configures middleware, security, and routes on the Express instance without binding to a network port (`app.listen`). `server.ts` imports `app`, handles database connections, starts listening on a TCP port, and coordinates graceful shutdown. Separating them allows test suites (Supertest) to import `app` directly for fast in-memory testing without opening ports or conflicting with running development servers."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is the difference between PUT and PATCH in RESTful design?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "PUT is an idempotent complete replacement: the client must send the entire representation of the resource; any omitted fields are overwritten or reset to null. PATCH is for partial updates: the client sends only the specific fields it wishes to modify (e.g. `{ status: 'completed' }`), leaving all other existing properties untouched."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: Your production backend begins logging database connection pool timeouts under high load. What are the common causes and how do you resolve them?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Common causes include: 1. Connection leaks (borrowing a connection via `pool.connect()` and forgetting to call `client.release()` in a finally block). 2. Slow queries holding connections open for seconds. 3. Insufficient pool size relative to traffic. I diagnose this by logging active vs idle pool client counts, setting statement timeouts in PostgreSQL (`SET statement_timeout = '3000'`), ensuring all manual connections are safely released in `finally` blocks, and optimizing slow queries using B-Tree indexes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">Why should stack traces never be exposed in production API error responses?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Stack traces leak internal file paths, framework versions, database table names, SQL query structures, and third-party library versions. Attackers use this reconnaissance information to identify known CVE vulnerabilities and plan targeted exploits. In production, we log stack traces internally to structured monitoring tools (Pino/Sentry) and return only generic, sanitized error messages and status codes to clients."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is the difference between soft deletion and hard deletion in database repositories? How is soft deletion implemented?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Hard deletion executes `DELETE FROM table WHERE id = $1`, permanently erasing the row from disk. Soft deletion adds a nullable timestamp column `deleted_at`: when deleting, we execute `UPDATE table SET deleted_at = NOW() WHERE id = $1`. All standard read queries filter with `WHERE deleted_at IS NULL`. Soft deletion preserves audit history, allows easy data recovery, and maintains relational foreign-key integrity."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What HTTP status code should be returned after successfully creating a resource? What should the response contain?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "HTTP `201 Created`. The response should contain the newly created resource representation (including its server-generated ID and timestamps), and optionally a `Location` header pointing to the URI of the newly created resource (e.g. `Location: /api/v1/tasks/task_123`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">How do you structure database transactions across multiple repository operations in Node.js?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "To ensure atomicity (all-or-nothing), borrow a single dedicated client from the pool via `const client = await pool.connect()`. Wrap operations in a `try...catch...finally` block: execute `await client.query('BEGIN')`, run all intermediate queries using that same `client`, and commit via `await client.query('COMMIT')`. If any query throws, call `await client.query('ROLLBACK')` in the catch block. Finally, always release the client back to the pool in the `finally` block: `client.release()`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is OpenAPI / Swagger, and how does it integrate into a production Node.js REST API?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "OpenAPI is a machine-readable specification language for describing RESTful APIs (endpoints, request bodies, query params, response schemas, and authentication schemes). In modern Node.js, we generate OpenAPI specs automatically from Zod validation schemas using libraries like `@asteasolutions/zod-to-openapi` or `tsoa`, and serve an interactive UI via `swagger-ui-express` at `/api/docs`. This ensures documentation never goes out of sync with code."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">Scenario: You need to support searching tasks by title with partial string matching. Why is `WHERE title LIKE '%query%'` a performance hazard, and what should you use in production?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`LIKE '%query%'` with a leading wildcard cannot use a standard B-Tree index, forcing PostgreSQL to perform a full sequential table scan (O(N) disk I/O), which bottlenecks the database as rows grow. In production, I implement either: 1. PostgreSQL Full-Text Search using `tsvector` and `tsquery` backed by a GIN index, or 2. Tri-gram matching with the `pg_trgm` extension and a GIN index (`CREATE INDEX ON tasks USING gin (title gin_trgm_ops);`), enabling index-accelerated sub-string searches in milliseconds."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How does containerized graceful shutdown coordinate with Docker and Kubernetes health checks?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "When Kubernetes terminates a pod, it simultaneously: 1. Removes the pod IP from the Service endpoint list (so ingress load balancers stop sending new requests), and 2. Sends `SIGTERM` to the container process. The Node application enters graceful shutdown: `/readyz` immediately returns 503, the HTTP server closes (`server.close()`), active requests finish processing, database pools are drained, and the process exits. If shutdown exceeds the pod's `terminationGracePeriodSeconds` (default 30s), Kubernetes issues `SIGKILL`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

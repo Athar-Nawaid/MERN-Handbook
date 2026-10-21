@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 42: Web Performance | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master full-stack web performance optimization: Core Web Vitals (LCP, INP, CLS), critical rendering path, JavaScript bundle optimization, tree shaking, HTTP caching headers, and Chrome DevTools flamegraph profiling.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="42">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART IX — Advanced and Frequently Overlooked Topics</div>
+          <h1 class="chapter-title">Chapter 42: Web Performance</h1>
+          <p class="chapter-lead">
+            High performance is an essential product feature that directly drives conversion rates, search rankings, and user retention. This chapter deconstructs modern frontend and network performance engineering: Google Core Web Vitals (LCP, INP, CLS), browser critical rendering path acceleration, asset optimization, JavaScript bundle pruning and tree shaking, HTTP caching architecture, and deep Chrome DevTools flamegraph diagnostics.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Core Web Vitals</span>
+              <span class="meta-pill">Bundle &amp; Caching Optimization</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Deconstruct Google's <strong>Core Web Vitals</strong>: Largest Contentful Paint (<strong>LCP</strong>), Interaction to Next Paint (<strong>INP</strong>), and Cumulative Layout Shift (<strong>CLS</strong>).</li>
+            <li>Differentiate between <strong>Field Data (Real User Monitoring / RUM)</strong> and <strong>Lab Data (Synthetic / Lighthouse)</strong>.</li>
+            <li>Accelerate the <strong>Critical Rendering Path (CRP)</strong> using resource hints: <code>preload</code>, <code>prefetch</code>, <code>preconnect</code>, and <code>dns-prefetch</code>.</li>
+            <li>Optimize hero images and modern formats (AVIF, WebP, responsive <code>srcset</code>) with <code>fetchpriority="high"</code> and explicit dimensions.</li>
+            <li>Eliminate JavaScript bloat via <strong>Tree Shaking</strong>, dynamic <code>import()</code> code-splitting, and Rollup/Webpack bundle inspection.</li>
+            <li>Architect multi-tier HTTP caching policies using <code>Cache-Control</code> (immutable content hashing vs. <code>stale-while-revalidate</code>) and <code>ETag</code> conditional validation.</li>
+            <li>Profile main thread bottlenecks, Long Tasks (&gt;50ms), and memory bloat using Chrome DevTools Performance panel flamegraphs.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. The Core Web Vitals Mental Model: LCP, INP, and CLS</h2>
+        <p>
+          Historically, web performance was measured with technical network metrics like <code>DOMContentLoaded</code> and <code>window.onload</code>. While useful for measuring wire speed, these metrics failed to capture whether a user could actually see meaningful content or interact smoothly with the page.
+        </p>
+        <p>
+          Google standardized <strong>Core Web Vitals</strong> as a user-centric trinity evaluating loading speed, interactivity responsiveness, and visual stability:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>User Experience Dimension</th>
+                <th>Good Threshold (75th Percentile)</th>
+                <th>Needs Improvement</th>
+                <th>Poor</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>LCP</strong> (Largest Contentful Paint)</td>
+                <td>Loading Speed (Perceived Readability)</td>
+                <td><strong>&le; 2.5 seconds</strong></td>
+                <td>2.5s – 4.0s</td>
+                <td>&gt; 4.0s</td>
+              </tr>
+              <tr>
+                <td><strong>INP</strong> (Interaction to Next Paint)</td>
+                <td>Responsiveness (Smooth Interactivity)</td>
+                <td><strong>&le; 200 ms</strong></td>
+                <td>200ms – 500ms</td>
+                <td>&gt; 500ms</td>
+              </tr>
+              <tr>
+                <td><strong>CLS</strong> (Cumulative Layout Shift)</td>
+                <td>Visual Stability (No Content Jumps)</td>
+                <td><strong>&le; 0.1</strong></td>
+                <td>0.1 – 0.25</td>
+                <td>&gt; 0.25</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="diagram-container">
+          <pre class="ascii-diagram">
++---------------------------------------------------------------------------------------------------+
+|                                  CORE WEB VITALS TIMELINE                                         |
++---------------------------------------------------------------------------------------------------+
+|  Navigation Start                                                                                 |
+|       |                                                                                           |
+|       v                                                                                           |
+|  [ TTFB: Server Response ]                                                                        |
+|       |                                                                                           |
+|       v                                                                                           |
+|  [ FCP: First text / logo painted ]                                                               |
+|       |                                                                                           |
+|       v                                                                                           |
+|  [ LCP: Largest visible image or hero headline painted ] <--- TARGET: <= 2.5 SECONDS              |
+|       |                                                                                           |
+|       v                                                                                           |
+|  === USER CLICKS BUTTON / TYPES INTO INPUT ===                                                    |
+|       |                                                                                           |
+|       +--> [ Input Delay ] (Waiting for main thread queue)                                        |
+|       |                                                                                           |
+|       +--> [ Processing Duration ] (Executing click handler callback)                             |
+|       |                                                                                           |
+|       +--> [ Presentation Delay ] (Browser recalculating style, layout, paint)                    |
+|       |                                                                                           |
+|       v                                                                                           |
+|  [ INP: Next Frame Renders on Screen ] <---------------------- TARGET: <= 200 MILLISECONDS        |
+|                                                                                                   |
+|  * Throughout Entire Session: Measure unexpected layout shifts                                    |
+|  [ CLS: Sum of (Impact Fraction x Distance Fraction) ] <------ TARGET: <= 0.10                    |
++---------------------------------------------------------------------------------------------------+
+          </pre>
+        </div>
+
+        <h3>A. Largest Contentful Paint (LCP) Breakdown</h3>
+        <p>
+          LCP measures the time elapsed from the user initiating navigation until the largest visual element within the initial viewport completes rendering. The LCP candidate is typically:
+        </p>
+        <ul>
+          <li>An <code>&lt;img&gt;</code> element (hero banner or product image).</li>
+          <li>An image inside an <code>&lt;svg&gt;</code> or a CSS <code>background-image: url(...)</code>.</li>
+          <li>A video poster frame or <code>&lt;video&gt;</code> preview element.</li>
+          <li>A block-level text container holding prominent headline typography.</li>
+        </ul>
+        <p>
+          LCP consists of four distinct sub-parts:
+          <code>LCP = TTFB (Time to First Byte) + Resource Load Delay + Resource Load Duration + Element Render Delay</code>. To optimize LCP, you must identify which of the four stages represents the primary bottleneck.
+        </p>
+
+        <h3>B. Interaction to Next Paint (INP) vs. First Input Delay (FID)</h3>
+        <p>
+          In March 2024, Google officially replaced <strong>First Input Delay (FID)</strong> with <strong>Interaction to Next Paint (INP)</strong>. FID was flawed because it only measured the <em>input delay</em> (the time waiting for the main thread to wake up) of the very <em>first</em> user interaction on the page. It ignored the JavaScript execution time and completely ignored subsequent clicks, tab switches, and interactions during the session.
+        </p>
+        <p>
+          <strong>INP</strong> measures the responsiveness of <em>all</em> qualifying interactions (clicks, taps, keyboard presses) throughout the full page lifecycle, reporting the worst interaction (excluding rare outliers, typically at the 98th or 75th percentile). An interaction's latency consists of three phases:
+        </p>
+        <ol>
+          <li><strong>Input Delay:</strong> Time spent waiting for background tasks or Long Tasks (&gt;50ms) to clear the browser main thread event loop.</li>
+          <li><strong>Processing Time:</strong> Time taken executing JavaScript event handlers registered for that interaction.</li>
+          <li><strong>Presentation Delay:</strong> Time taken by the browser compositing engine to recalculate layout, style, paint, and display the next graphical frame.</li>
+        </ol>
+
+        <h3>C. Cumulative Layout Shift (CLS)</h3>
+        <p>
+          CLS quantifies the total score of all unexpected layout shifts occurring during the entire lifespan of a page. A layout shift occurs when any visible DOM element changes its start position between two frames. The score is calculated as:
+        </p>
+        <p>
+          <code>Layout Shift Score = Impact Fraction &times; Distance Fraction</code>
+        </p>
+        <ul>
+          <li><strong>Impact Fraction:</strong> The percentage of the viewport area occupied by unstable elements before and after the shift.</li>
+          <li><strong>Distance Fraction:</strong> The greatest distance unstable elements moved relative to the largest viewport dimension.</li>
+        </ul>
+        <p>
+          Common root causes of poor CLS include:
+        </p>
+        <ul>
+          <li>Images and iframes rendered without explicit <code>width</code> and <code>height</code> attributes or CSS <code>aspect-ratio</code>.</li>
+          <li>Dynamic client-side ads, banners, or newsletter signup bars injected into the DOM without reserved space placeholders.</li>
+          <li>Web fonts causing Flash of Invisible Text (FOIT) or Flash of Unstyled Text (FOUT) when the fallback font has different metrics than the web font.</li>
+        </ul>
+
+        <!-- Section 2 -->
+        <h2>2. Lab Data (Synthetic) vs. Field Data (Real User Monitoring)</h2>
+        <p>
+          One of the most frequent misconceptions in engineering teams is assuming that a 100/100 score in Google Lighthouse guarantees pristine real-world performance. In reality, performance metrics exist in two fundamentally different environments:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Dimension</th>
+                <th>Lab Data (Synthetic / Lighthouse / CI)</th>
+                <th>Field Data (Real User Monitoring / RUM / CrUX)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Environment</strong></td>
+                <td>Controlled, simulated environment with fixed CPU throttling, emulated mobile viewport, and predefined network speeds (e.g., Fast 3G).</td>
+                <td>Real devices, real hardware variations (from \$100 Android phones to M3 MacBooks), and live cellular networks across the globe.</td>
+              </tr>
+              <tr>
+                <td><strong>Interactivity Metric</strong></td>
+                <td>Total Blocking Time (<strong>TBT</strong>) as a synthetic proxy. INP cannot be measured in the lab without simulated user interaction scripts.</td>
+                <td>Actual <strong>INP</strong> recorded across millions of live user interactions during checkout, search, and form inputs.</td>
+              </tr>
+              <tr>
+                <td><strong>Reproducibility</strong></td>
+                <td>High reproducibility; ideal for automated pull request regression tests and local debugging in DevTools.</td>
+                <td>Statistical distribution (75th percentile of all visits); fluctuates based on real-world traffic mix and geographies.</td>
+              </tr>
+              <tr>
+                <td><strong>SEO &amp; Ranking Impact</strong></td>
+                <td>Zero direct impact on Google Search rankings.</td>
+                <td><strong>Direct impact</strong> via the Chrome User Experience Report (CrUX) 28-day rolling window dataset.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JavaScript (Collecting Field Core Web Vitals)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// Production field tracking using the official 'web-vitals' library
+import { onLCP, onINP, onCLS } from 'web-vitals';
+
+function sendToAnalytics(metric) {
+  const body = JSON.stringify({
+    name: metric.name,        // 'LCP', 'INP', or 'CLS'
+    value: metric.value,      // Numeric value in ms or unitless score
+    rating: metric.rating,    // 'good', 'needs-improvement', or 'poor'
+    delta: metric.delta,      // Change since last emission
+    id: metric.id,            // Unique interaction or session ID
+    navigationType: metric.navigationType // 'navigate', 'reload', 'back-forward'
+  });
+
+  // Use navigator.sendBeacon to ensure data is transmitted even if user closes the tab
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon('/api/telemetry/vitals', body);
+  } else {
+    fetch('/api/telemetry/vitals', {
+      method: 'POST',
+      body,
+      headers: { 'Content-Type': 'application/json' },
+      keepalive: true
+    });
+  }
+}
+
+// Subscribe to Core Web Vitals with reporting callbacks
+onLCP(sendToAnalytics);
+onINP(sendToAnalytics);
+onCLS(sendToAnalytics);</code></pre>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. Optimizing the Critical Rendering Path &amp; Resource Hints</h2>
+        <p>
+          The <strong>Critical Rendering Path (CRP)</strong> is the sequence of steps the browser takes from receiving raw HTML bytes to painting pixels onto the screen:
+        </p>
+        <p>
+          <code>HTML Bytes &rarr; Characters &rarr; Tokens &rarr; Nodes &rarr; DOM Tree</code><br>
+          <code>CSS Bytes &rarr; Characters &rarr; Tokens &rarr; Nodes &rarr; CSSOM Tree</code><br>
+          <code>DOM + CSSOM &rarr; Render Tree &rarr; Layout (Reflow) &rarr; Paint &rarr; Composite</code>
+        </p>
+        <p>
+          By default, CSS is <strong>render-blocking</strong>: the browser halts rendering until all referenced stylesheets are downloaded and parsed into the CSSOM. Synchronous <code>&lt;script&gt;</code> tags are <strong>parser-blocking</strong>: the HTML parser freezes until the script is downloaded and executed.
+        </p>
+
+        <h3>A. Script Loading Attributes: Synchronous vs. <code>defer</code> vs. <code>async</code></h3>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Loading Method</th>
+                <th>Download Behavior</th>
+                <th>Execution Timing</th>
+                <th>Execution Order Preserved?</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>&lt;script src="..."&gt;</code></td>
+                <td>Pauses HTML parsing immediately to download script.</td>
+                <td>Executes immediately upon download; blocks HTML parser.</td>
+                <td>Yes, in source document order.</td>
+              </tr>
+              <tr>
+                <td><code>&lt;script async src="..."&gt;</code></td>
+                <td>Downloads asynchronously in parallel with HTML parsing.</td>
+                <td>Executes the millisecond download finishes; pauses HTML parsing during execution.</td>
+                <td><strong>No</strong>; first script to finish downloads executes first (race condition).</td>
+              </tr>
+              <tr>
+                <td><code>&lt;script defer src="..."&gt;</code></td>
+                <td>Downloads asynchronously in parallel with HTML parsing.</td>
+                <td>Executes only after HTML document is fully parsed, right before <code>DOMContentLoaded</code>.</td>
+                <td><strong>Yes</strong>; strictly executes in source document order. Best for app bundles.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>B. Modern Resource Hints</h3>
+        <p>
+          Resource hints inform the browser's speculative pre-parser about upcoming network dependencies before they are encountered in the document body:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">HTML (Resource Hints)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-html">&lt;head&gt;
+  &lt;!-- 1. dns-prefetch: Resolves third-party DNS domain early (saves ~20-100ms) --&gt;
+  &lt;link rel="dns-prefetch" href="https://api.stripe.com"&gt;
+
+  &lt;!-- 2. preconnect: Performs DNS lookup + TCP 3-way handshake + TLS negotiation in advance --&gt;
+  &lt;link rel="preconnect" href="https://fonts.gstatic.com" crossorigin&gt;
+
+  &lt;!-- 3. preload: High-priority download of critical resources needed in the current page --&gt;
+  &lt;!-- Crucial for Hero Images (LCP element) and Critical Web Fonts --&gt;
+  &lt;link rel="preload" href="/fonts/inter-bold.woff2" as="font" type="font/woff2" crossorigin&gt;
+  &lt;link rel="preload" href="/images/hero-banner.webp" as="image" type="image/webp" fetchpriority="high"&gt;
+
+  &lt;!-- 4. prefetch: Low-priority background download for resources needed on the NEXT page --&gt;
+  &lt;link rel="prefetch" href='https://example.com/js/checkout-modal.chunk.js' as="script"&gt;
+&lt;/head&gt;</code></pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Image, Media, and Font Optimization</h2>
+        <p>
+          Images and media typically account for over <strong>60% to 75%</strong> of the total bytes transmitted over the wire for modern web applications. Unoptimized images are the single most common cause of failing LCP and CLS scores.
+        </p>
+
+        <h3>A. Next-Generation Formats: AVIF and WebP</h3>
+        <p>
+          Legacy formats like JPEG and PNG are vastly inefficient compared to modern video-derived codecs:
+        </p>
+        <ul>
+          <li><strong>WebP:</strong> Supported by &gt;97% of modern browsers; provides 25% to 35% smaller file sizes than JPEG at equivalent visual perceptual quality. Supports transparency (alpha channel) and animation.</li>
+          <li><strong>AVIF (AV1 Image File Format):</strong> Derived from the open-source AV1 video codec. Slashes file sizes by <strong>50% compared to JPEG</strong> and 20% compared to WebP, with superior color gradients and high-dynamic-range (HDR) preservation.</li>
+        </ul>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">HTML (Responsive Art Direction with Picture Element)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-html">&lt;!-- Use &lt;picture&gt; to serve AVIF with WebP and JPEG fallbacks, plus responsive srcset --&gt;
+&lt;picture&gt;
+  &lt;!-- AVIF for cutting-edge browsers --&gt;
+  &lt;source 
+    type="image/avif" 
+    srcset="/images/hero-400.avif 400w, /images/hero-800.avif 800w, /images/hero-1600.avif 1600w"
+    sizes="(max-width: 600px) 100vw, (max-width: 1200px) 50vw, 800px"&gt;
+  
+  &lt;!-- WebP fallback --&gt;
+  &lt;source 
+    type="image/webp" 
+    srcset="/images/hero-400.webp 400w, /images/hero-800.webp 800w, /images/hero-1600.webp 1600w"
+    sizes="(max-width: 600px) 100vw, (max-width: 1200px) 50vw, 800px"&gt;
+
+  &lt;!-- Fallback IMG tag with explicit aspect ratio to prevent CLS --&gt;
+  &lt;img 
+    src="/images/hero-800.jpg" 
+    alt="Developer workstation setup" 
+    width="800" 
+    height="450" 
+    fetchpriority="high"
+    decoding="async"
+    style="aspect-ratio: 16 / 9; width: 100%; height: auto;"&gt;
+&lt;/picture&gt;</code></pre>
+        </div>
+
+        <div class="callout callout-tip">
+          <div class="callout-title">💡 Critical Rule for LCP Images vs. Below-the-Fold Images</div>
+          <p>
+            <strong>Never lazy-load the LCP hero image!</strong> Adding <code>loading="lazy"</code> to an above-the-fold hero image forces the browser to wait until layout computation completes before starting the download, introducing an artificial 500ms–1500ms delay that destroys your LCP score.
+          </p>
+          <p>
+            Use <code>fetchpriority="high"</code> and <code>&lt;link rel="preload"&gt;</code> on the hero image. Use <code>loading="lazy"</code> and <code>decoding="async"</code> strictly for images located below the fold.
+          </p>
+        </div>
+
+        <h3>B. Web Font Optimization: Eliminating FOIT and FOUT</h3>
+        <p>
+          When browsers download custom web fonts, text can either disappear completely (<strong>Flash of Invisible Text — FOIT</strong>) or render momentarily in a system font before abruptly shifting in shape and size (<strong>Flash of Unstyled Text — FOUT</strong>), driving up CLS scores.
+        </p>
+        <ul>
+          <li>Use <code>font-display: swap;</code> in your <code>@font-face</code> declaration to ensure text is immediately visible with a fallback font, swapping in the custom font once downloaded.</li>
+          <li>Use modern <strong>WOFF2</strong> format exclusively (which uses Brotli compression internally) and self-host font files to eliminate cross-origin connection handshakes.</li>
+          <li>Apply font subsetting to eliminate unused glyphs (e.g., stripping Asian or Cyrillic characters if serving an English-only portal).</li>
+        </ul>
+
+        <!-- Section 5 -->
+        <h2>5. JavaScript Bundle Optimization and Tree Shaking</h2>
+        <p>
+          JavaScript is the most expensive byte delivered over the wire. Unlike images, which are merely decoded and painted by the GPU, JavaScript must be <strong>downloaded, parsed, compiled (JIT), and executed</strong> by the V8 CPU engine on the main thread, directly contributing to severe INP bottlenecks.
+        </p>
+
+        <div class="diagram-container">
+          <pre class="ascii-diagram">
++---------------------------------------------------------------------------------------------------+
+|                              TREE SHAKING STATIC ELIMINATION                                      |
++---------------------------------------------------------------------------------------------------+
+|  Source Module: math.js                                                                            |
+|  export function add(a, b) { return a + b; }                                                      |
+|  export function multiply(a, b) { return a * b; }                                                 |
+|  export function complexFourierTransform(data) { ... massive 80KB code ... }                      |
+|                                                                                                   |
+|  Consumer: app.js                                                                                 |
+|  import { add } from './math.js';  <-- Static ES Module import syntax                             |
+|  console.log(add(5, 10));                                                                         |
+|                                                                                                   |
+|  ============================== BUNDLER (Vite/Rollup/Webpack) ===================================  |
+|  1. Abstract Syntax Tree (AST) analysis discovers 'multiply' and 'complexFourierTransform'       |
+|     are never referenced in the import graph.                                                     |
+|  2. Marks unused exports as DEAD CODE (SideEffects: false).                                       |
+|  3. Uglifier / Minifier (Terser / esbuild) PRUNES unused functions entirely.                       |
+|                                                                                                   |
+|  Final Production Bundle: bundle.js                                                               |
+|  function add(a, b) { return a + b; } console.log(add(5, 10));  // 80KB pruned!                   |
++---------------------------------------------------------------------------------------------------+
+          </pre>
+        </div>
+
+        <h3>A. Tree Shaking Requirements</h3>
+        <p>
+          Tree shaking relies strictly on the static structure of <strong>ECMAScript Modules (ESM)</strong>:
+        </p>
+        <ul>
+          <li><code>import</code> and <code>export</code> statements must appear at the top-level scope (static, cannot be placed inside an <code>if</code> block).</li>
+          <li><strong>CommonJS (CJS) prevents tree shaking</strong> because <code>const lib = require(condition ? './a' : './b')</code> is dynamic and can only be evaluated at runtime. Bundlers are forced to include the entire CommonJS package.</li>
+          <li>Add <code>"sideEffects": false</code> in your <code>package.json</code> to declare that imported modules contain no global modifications (like modifying <code>window</code> or injecting CSS), allowing the bundler to safely drop unused files.</li>
+        </ul>
+
+        <h3>B. Code-Splitting and Dynamic Imports</h3>
+        <p>
+          Monolithic SPA bundles force users to download code for pages they may never visit (such as admin panels, heavy chart libraries, or billing forms). Code-splitting breaks the monolith into smaller on-demand chunks loaded via dynamic <code>import()</code>:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JavaScript (Dynamic Import &amp; React.lazy)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import React, { Suspense, useState } from 'react';
+
+// Route-based code splitting: The 450KB chart chunk is NOT in the main entry bundle
+const HeavyAnalyticsDashboard = React.lazy(() => import('./components/HeavyAnalyticsDashboard'));
+
+export function App() {
+  const [showDashboard, setShowDashboard] = useState(false);
+
+  return (
+    &lt;div&gt;
+      &lt;h1&gt;Customer Portal&lt;/h1&gt;
+      &lt;button onClick={() => setShowDashboard(true)}&gt;
+        View Deep Analytics
+      &lt;/button&gt;
+
+      {showDashboard &amp;&amp; (
+        &lt;Suspense fallback={&lt;div class="skeleton-loader"&gt;Loading analytics...&lt;/div&gt;}&gt;
+          &lt;HeavyAnalyticsDashboard /&gt;
+        &lt;/Suspense&gt;
+      )}
+    &lt;/div&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. HTTP Caching Headers and CDN Invalidation</h2>
+        <p>
+          The fastest network request is the request that never leaves the client's device. HTTP caching allows browsers and CDN edge caches to store copies of HTTP responses and serve them instantly without re-querying origin servers.
+        </p>
+
+        <h3>A. The <code>Cache-Control</code> Header Directives</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Directive</th>
+                <th>Meaning and Architecture Impact</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>public</code></td>
+                <td>Response may be cached by intermediate proxies, CDNs, and browser caches.</td>
+              </tr>
+              <tr>
+                <td><code>private</code></td>
+                <td>Response contains user-specific data (e.g. user profiles); <strong>only the client browser</strong> may cache it, never shared CDNs.</td>
+              </tr>
+              <tr>
+                <td><code>no-store</code></td>
+                <td><strong>Do not cache under any circumstances.</strong> Every request must hit the origin server (used for banking/auth endpoints).</td>
+              </tr>
+              <tr>
+                <td><code>no-cache</code></td>
+                <td>Response <em>may</em> be cached locally, but the browser <strong>must validate</strong> with the origin (via <code>ETag</code>) before serving it.</td>
+              </tr>
+              <tr>
+                <td><code>max-age=N</code></td>
+                <td>Specifies maximum freshness duration in seconds for browser caches.</td>
+              </tr>
+              <tr>
+                <td><code>s-maxage=N</code></td>
+                <td>Overrides <code>max-age</code> specifically for shared public caches (CDNs/Cloudflare).</td>
+              </tr>
+              <tr>
+                <td><code>immutable</code></td>
+                <td>Informs browser that the response body will <strong>never change</strong> during its lifetime. Prevents conditional validation checks on page refresh.</td>
+              </tr>
+              <tr>
+                <td><code>stale-while-revalidate=N</code></td>
+                <td>Instructs the client to immediately return a cached stale response while asynchronously fetching fresh content in the background.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>B. The Two Core Caching Architecture Strategies</h3>
+        <p>
+          Production web applications partition assets into two distinct caching categories:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">HTTP Response Headers</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-http"># STRATEGY 1: Static Hashed Assets (JS, CSS, Images with content hashes like app.a7b9c1.js)
+# Safe to cache FOREVER because if code changes, the filename hash changes!
+Cache-Control: public, max-age=31536000, immutable
+
+# STRATEGY 2: Dynamic Entrypoint HTML (index.html, API endpoints)
+# Must never be cached permanently; browser must re-check server on every navigation
+Cache-Control: public, no-cache, must-revalidate
+ETag: "33a64df551425fcc55e4d42a148795d9f25f89d4"</code></pre>
+        </div>
+
+        <h3>C. Conditional Validation with ETags (304 Not Modified)</h3>
+        <p>
+          When an asset with <code>Cache-Control: no-cache</code> or an expired <code>max-age</code> is requested, the client sends a conditional HTTP request with the <code>If-None-Match</code> header containing the cached ETag:
+        </p>
+        <ol>
+          <li>Client sends: <code>GET /index.html</code> with <code>If-None-Match: "33a64d..."</code></li>
+          <li>Origin server checks its current content hash.</li>
+          <li>If the hash matches, the server replies with <strong><code>HTTP/1.1 304 Not Modified</code></strong> with an empty response body (0 payload bytes transferred), saving bandwidth and completing in one fast network round-trip.</li>
+          <li>If the hash differs, the server transmits <code>HTTP/1.1 200 OK</code> with the new body and new ETag.</li>
+        </ol>
+
+        <!-- Section 7 -->
+        <h2>7. Chrome DevTools Flamegraph Profiling and Main Thread Debugging</h2>
+        <p>
+          The Chrome DevTools <strong>Performance</strong> panel is the primary tool for diagnosing interaction latency and main thread bottlenecks.
+        </p>
+
+        <div class="diagram-container">
+          <pre class="ascii-diagram">
++---------------------------------------------------------------------------------------------------+
+|                        DEVTOOLS FLAMEGRAPH: MAIN THREAD LONG TASK                                 |
++---------------------------------------------------------------------------------------------------+
+|  Main Thread:                                                                                     |
+|  [================== Task (145ms) - RED STRIPED CORNER (LONG TASK > 50ms) ===================]   |
+|    |                                                                                              |
+|    +-- [ Event: click (138ms) ]                                                                   |
+|          |                                                                                        |
+|          +-- [ handleSubmit (130ms) ]                                                             |
+|                |                                                                                  |
+|                +-- [ filterAndSortList (95ms) ] <--- CPU BOTTLENECK: SYNC O(N^2) ALGORITHM       |
+|                |                                                                                  |
+|                +-- [ Recalculate Style & Layout (35ms) ] <--- FORCED SYNCHRONOUS REFLOW           |
++---------------------------------------------------------------------------------------------------+
+          </pre>
+        </div>
+
+        <h3>A. Understanding Long Tasks and Main Thread Starvation</h3>
+        <p>
+          Any JavaScript execution task that occupies the browser main thread for <strong>more than 50 milliseconds</strong> is designated as a <strong>Long Task</strong> (flagged with a red triangle warning in DevTools).
+        </p>
+        <p>
+          When a Long Task runs, the browser event loop is completely paralyzed. User keystrokes, mouse clicks, scrolling gestures, and screen paints cannot be processed. If a user clicks during a 150ms Long Task, the click sits queued in the browser event queue, resulting in an unacceptably high <strong>INP score</strong>.
+        </p>
+
+        <h3>B. Breaking Up Long Tasks with <code>scheduler.yield()</code></h3>
+        <p>
+          Heavy calculations should be broken into discrete chunks that yield control back to the browser event loop between iterations:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JavaScript (Yielding to Main Thread)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// Modern task scheduling using scheduler.yield() with fallback to setTimeout
+async function yieldToMain() {
+  if ('scheduler' in window && 'yield' in window.scheduler) {
+    return window.scheduler.yield();
+  }
+  // Fallback for older browsers: macro-task scheduled at end of current task
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+// Processing a massive 50,000 item dataset without blocking INP
+async function processLargeBatch(items) {
+  let count = 0;
+  for (const item of items) {
+    heavyCalculation(item);
+    count++;
+
+    // Yield control back to browser every 50 items so paints and clicks can proceed
+    if (count % 50 === 0) {
+      await yieldToMain();
+    }
+  }
+}</code></pre>
+        </div>
+
+        <h3>C. Avoiding Forced Synchronous Reflow (Layout Thrashing)</h3>
+        <p>
+          Layout (reflow) is normally batched lazily by the browser at the end of the frame. However, if your JavaScript writes to the DOM and then immediately reads geometric properties (such as <code>offsetWidth</code>, <code>clientHeight</code>, or <code>getBoundingClientRect()</code>), you trigger <strong>Forced Synchronous Reflow</strong>:
+        </p>
+
+        <div class="code-block">
+          <div class="code-header">
+            <span class="code-lang">JavaScript (Layout Thrashing Anti-Pattern vs. Batched Fix)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// ❌ ANTI-PATTERN: Layout Thrashing (Read/Write interleaved inside a loop)
+// Causes N recalculate style & layout passes inside a single frame!
+elements.forEach(el => {
+  const currentHeight = el.offsetHeight; // READ (Forces immediate synchronous layout recalculation)
+  el.style.height = `${currentHeight + 10}px`; // WRITE (Dirty invalidation)
+});
+
+// ✅ SOLUTION: Batch all Reads first, then batch all Writes
+// Triggers exactly ONE layout pass!
+const heights = elements.map(el => el.offsetHeight); // Batch READS
+elements.forEach((el, index) => {
+  el.style.height = `${heights[index] + 10}px`;       // Batch WRITES
+});</code></pre>
+        </div>
+
+        <!-- Section 8 -->
+        <h2>8. Hands-on Practice Exercises</h2>
+        
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-badge">Exercise 42.1</span>
+            <h3 class="exercise-title">Diagnosing and Fixing an LCP &amp; CLS Crisis on an E-Commerce Page</h3>
+          </div>
+          <p>
+            You are tasked with reviewing an e-commerce Product Detail Page (PDP). The marketing team reports that mobile Core Web Vitals are failing Google audits with an <strong>LCP of 5.8 seconds</strong> and a <strong>CLS of 0.38</strong>. The current markup is:
+          </p>
+          <pre><code class="language-html">&lt;head&gt;
+  &lt;link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div class="banner-slot"&gt;&lt;/div&gt; &lt;!-- Dynamic ad injected 1.2s later by client JS --&gt;
+  &lt;main&gt;
+    &lt;h1&gt;Ergonomic Mechanical Keyboard&lt;/h1&gt;
+    &lt;img src="/images/product-keyboard.png" loading="lazy" class="product-img"&gt;
+  &lt;/main&gt;
+&lt;/body&gt;</code></pre>
+          <p>
+            <strong>Task:</strong> Identify the 4 performance defects in this markup and rewrite it to achieve an LCP under 2.0s and a CLS under 0.05.
+          </p>
+          
+          <details class="exercise-solution">
+            <summary class="solution-toggle">View Architectural Solution</summary>
+            <div class="solution-content">
+              <h4>Defect Diagnosis:</h4>
+              <ol>
+                <li><strong><code>loading="lazy"</code> on LCP Hero Image:</strong> Defers hero image download until layout completion, causing massive LCP delay.</li>
+                <li><strong>Uncompressed PNG format without responsive variants:</strong> Serving full desktop PNG to mobile viewports wastes megabytes over cellular networks.</li>
+                <li><strong>Missing dimensions on image:</strong> <code>&lt;img&gt;</code> lacks <code>width</code>, <code>height</code>, or CSS <code>aspect-ratio</code>, causing a severe layout shift (CLS) when the image finally renders.</li>
+                <li><strong>Dynamic unreserved ad container:</strong> <code>.banner-slot</code> has 0 height initially and expands abruptly when client JS injects the ad, pushing content down and blowing up CLS.</li>
+                <li><strong>Unconnected external font:</strong> Missing <code>preconnect</code> to <code>fonts.gstatic.com</code> delays font loading.</li>
+              </ol>
+
+              <h4>Production Optimized Markup:</h4>
+              <div class="code-block">
+                <div class="code-header">
+                  <span class="code-lang">HTML (Optimized Production PDP)</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-html">&lt;head&gt;
+  &lt;!-- Preconnect to font domains early --&gt;
+  &lt;link rel="preconnect" href="https://fonts.googleapis.com"&gt;
+  &lt;link rel="preconnect" href="https://fonts.gstatic.com" crossorigin&gt;
+  &lt;link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap"&gt;
+
+  &lt;!-- Preload the mobile LCP hero image with high priority --&gt;
+  &lt;link 
+    rel="preload" 
+    as="image" 
+    href="/images/product-keyboard-400.avif" 
+    type="image/avif" 
+    fetchpriority="high"
+    media="(max-width: 600px)"&gt;
+
+  &lt;style&gt;
+    /* Reserve minimum space for dynamic ad to prevent CLS */
+    .banner-slot {
+      min-height: 90px;
+      background-color: var(--color-bg-subtle, #f5f5f5);
+      contain: layout;
+    }
+  &lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div class="banner-slot" aria-hidden="true"&gt;&lt;/div&gt;
+
+  &lt;main&gt;
+    &lt;h1&gt;Ergonomic Mechanical Keyboard&lt;/h1&gt;
+    
+    &lt;picture&gt;
+      &lt;source type="image/avif" srcset="/images/product-400.avif 400w, /images/product-800.avif 800w" sizes="(max-width: 600px) 100vw, 800px"&gt;
+      &lt;source type="image/webp" srcset="/images/product-400.webp 400w, /images/product-800.webp 800w" sizes="(max-width: 600px) 100vw, 800px"&gt;
+      &lt;img 
+        src="/images/product-800.jpg" 
+        alt="Ergonomic mechanical keyboard with hot-swappable switches"
+        width="800" 
+        height="500" 
+        fetchpriority="high"
+        decoding="async"
+        style="aspect-ratio: 800 / 500; width: 100%; height: auto; max-width: 800px;"&gt;
+    &lt;/picture&gt;
+  &lt;/main&gt;
+&lt;/body&gt;</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-badge">Exercise 42.2</span>
+            <h3 class="exercise-title">Building a Production HTTP Caching &amp; Conditional ETag Engine in Express</h3>
+          </div>
+          <p>
+            Build an Express.js middleware configuration that establishes a bulletproof multi-tier caching strategy:
+          </p>
+          <ul>
+            <li>Static built assets located in <code>/public/dist</code> (generated with Vite content hashes) must be cached for 1 year with <code>immutable</code>.</li>
+            <li>Dynamic JSON API routes (e.g. <code>/api/catalog</code>) must support <code>ETag</code> generation and return <code>304 Not Modified</code> with empty body when the client provides a matching <code>If-None-Match</code> header.</li>
+            <li>Sensitive user authentication endpoints (<code>/api/user/profile</code>) must strictly forbid all caching across both browsers and CDNs.</li>
+          </ul>
+
+          <details class="exercise-solution">
+            <summary class="solution-toggle">View Architectural Solution</summary>
+            <div class="solution-content">
+              <div class="code-block">
+                <div class="code-header">
+                  <span class="code-lang">JavaScript (Express Production Caching Architecture)</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-javascript">import express from 'express';
+import path from 'path';
+import crypto from 'crypto';
+
+const app = express();
+
+// 1. TIER 1: Immutable Static Content (Vite Hashed Bundles)
+// Express static handles maxAge and immutable natively
+app.use('/static', express.static(path.join(__dirname, 'public/dist'), {
+  maxAge: '1y',               // Cache-Control: max-age=31536000
+  immutable: true,            // Cache-Control: ..., immutable
+  etag: true,
+  lastModified: true
+}));
+
+// 2. TIER 2: Sensitive Private Endpoints (Zero Caching)
+app.use('/api/user', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
+// 3. TIER 3: Dynamic Data with Strong ETag & Conditional Revalidation
+app.get('/api/catalog', async (req, res) => {
+  const catalogData = await fetchProductCatalogFromDB();
+  const serialized = JSON.stringify(catalogData);
+
+  // Compute strong SHA-256 ETag hash
+  const etag = `"${crypto.createHash('sha256').update(serialized).digest('hex')}"`;
+
+  // Set revalidation cache-control
+  res.setHeader('Cache-Control', 'public, no-cache, stale-while-revalidate=60');
+  res.setHeader('ETag', etag);
+
+  // Check conditional client header
+  const clientEtag = req.headers['if-none-match'];
+  if (clientEtag && clientEtag === etag) {
+    // 304 Not Modified: zero body payload transferred over wire!
+    return res.status(304).end();
+  }
+
+  res.setHeader('Content-Type', 'application/json');
+  return res.status(200).send(serialized);
+});</code></pre>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 9: Interview Questions -->
+        <section class="chapter-qa-section">
+          <h2>20 Comprehensive Web Performance Interview Questions &amp; Answers</h2>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What are the three Core Web Vitals and what specific user experience dimensions do they measure?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The three Core Web Vitals are Largest Contentful Paint (LCP), Interaction to Next Paint (INP), and Cumulative Layout Shift (CLS). LCP measures perceived loading speed by recording when the largest visual viewport element renders—our target is under 2.5 seconds. INP measures interactivity responsiveness by tracking the latency of clicks, taps, and keypresses through to frame presentation—targeted under 200 milliseconds. CLS measures visual stability by calculating unexpected layout jumps—targeted under 0.1."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">Why did Google replace First Input Delay (FID) with Interaction to Next Paint (INP) in 2024?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "FID had a major blind spot: it only measured the input delay of the very first user interaction on the page, completely ignoring the JavaScript execution time and all subsequent user actions. In contrast, INP measures the complete end-to-end latency—input delay, event execution duration, and browser paint presentation—across all qualifying interactions throughout the entire session, reporting the worst-case interaction to reflect true user experience."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">What is the difference between Lab Data and Field Data in web performance?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Lab data is gathered in a synthetic, controlled environment like Lighthouse with fixed network and CPU throttling. It is reproducible and excellent for CI regression testing, but cannot measure real user interactions like INP. Field data, or Real User Monitoring (RUM), is captured from actual visitors across diverse real-world hardware, networks, and viewports. Google uses 28-day rolling field data from the CrUX dataset to determine search ranking factors."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">How do you diagnose and optimize an underperforming Largest Contentful Paint (LCP)?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I decompose LCP into its four sub-parts: Time to First Byte (TTFB), Resource Load Delay, Resource Load Duration, and Element Render Delay. If TTFB is slow, I optimize server response times and CDN edge caching. To fix Resource Load Delay, I remove `loading='lazy'` from the hero image and inject `<link rel='preload' fetchpriority='high'>`. To reduce Load Duration, I compress images into AVIF/WebP with responsive `srcset`. To eliminate Render Delay, I ensure the image isn't blocked by client-side hydration or heavy CSSOM cascades."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What causes Cumulative Layout Shift (CLS) and how do you prevent it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "CLS is caused by visible elements shifting position between render frames. The most common causes are images or iframes lacking explicit width and height dimensions, dynamic ads or widgets injected into the DOM without reserved placeholder containers, and late-loading web fonts causing FOUT. I prevent CLS by defining `width`, `height`, or CSS `aspect-ratio` on all media, applying CSS `min-height` to dynamic containers, and using `font-display: swap` with size-adjusted fallback fonts."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">Compare the script attributes: synchronous, async, and defer.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A regular synchronous script halts HTML parsing while the script is downloaded and executed. An `async` script downloads in parallel with parsing and executes the moment download completes, interrupting HTML parsing and executing out-of-order. A `defer` script downloads in parallel but waits until HTML parsing is completely finished, executing strictly in document order right before `DOMContentLoaded`. `defer` is the standard for application scripts."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">How does tree shaking work and why can't bundlers tree-shake CommonJS modules?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Tree shaking uses static analysis on the ECMAScript Module AST to detect unused exports and eliminate them from the production bundle. It requires ESM's static `import` and `export` syntax at top-level scope. CommonJS uses `require()`, which is dynamic and can be called conditionally at runtime inside functions or `if` blocks. Because the bundler cannot prove what might be executed at runtime without running the code, it must safely include the entire CommonJS module."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">What is a Long Task in browser runtime performance and how does it degrade INP?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Long Task is any uninterrupted JavaScript execution occupying the browser main thread for longer than 50 milliseconds. Because JavaScript runs on a single-threaded event loop, a Long Task starves the main thread, preventing user input events (clicks, keypresses) from being processed. The user interaction sits queued until the Long Task completes, directly inflating the Input Delay phase and causing severe INP regressions."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">How do you break up long-running JavaScript execution without starving the event loop?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I use task yielding. In modern browsers, `await scheduler.yield()` yields control back to the main thread while maintaining priority. In older browsers, scheduling a micro-chunk via `await new Promise(r => setTimeout(r, 0))` posts a macro-task to the event queue. This allows the browser to process queued user input clicks and perform display layout/paint updates between chunks. For CPU-bound operations like crypto or image parsing, I offload work entirely to Web Workers."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is Forced Synchronous Reflow (Layout Thrashing) and how do you prevent it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Browsers normally batch DOM layout changes lazily. Forced Synchronous Reflow happens when JavaScript modifies the DOM (a write) and then immediately reads geometric properties like `offsetHeight` or `getBoundingClientRect()`. To return an accurate number, the browser is forced to flush pending styles and recalculate layout synchronously right in that microsecond. If done in a loop, it triggers layout thrashing. I fix this by batching all geometric reads first, then batching all style writes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Explain the difference between Cache-Control: no-cache and Cache-Control: no-store.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`no-store` instructs the browser and all intermediate caches to never store any version of the response under any circumstance—every request must re-fetch the complete body from origin. In contrast, `no-cache` allows the response to be stored in the cache, but mandates that the browser must validate freshness with the origin server (using ETags or Last-Modified) before serving it. If unchanged, the server returns a 304 with zero body transfer."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">How does conditional HTTP validation work using ETags and If-None-Match?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "An ETag is an opaque content hash sent in the HTTP response header representing the entity state. On subsequent requests, the browser sends that hash back in the `If-None-Match` header. The server compares the client's hash against the current content hash. If they match, the server returns `304 Not Modified` with an empty body, saving network bandwidth and execution time. If different, it sends `200 OK` with the new body."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Why do production single-page applications use immutable caching for JS bundles but no-cache for index.html?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Modern bundlers inject content hashes into asset filenames like `app.4f9a1c.js`. If the code never changes, the URL never changes, making it safe to cache for 1 year with `immutable`. However, `index.html` references those hashed script URLs. If `index.html` were cached aggressively, users would never receive updates when a new deployment occurs. Serving `index.html` with `no-cache` forces immediate validation on refresh to instantly serve updated script links."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the stale-while-revalidate HTTP directive and when is it preferred?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`stale-while-revalidate=N` instructs the client or CDN edge cache that if an asset is stale, it can immediately return the cached stale copy to the user with zero latency, while simultaneously triggering an asynchronous background revalidation request to the origin server. It provides instantaneous loading for users while ensuring the cache updates for the subsequent visit, making it ideal for catalog pages, search results, and avatar feeds."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What are the resource hints preconnect, dns-prefetch, preload, and prefetch?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`dns-prefetch` resolves third-party domain DNS early. `preconnect` goes further by performing DNS lookup, TCP handshake, and TLS negotiation in advance. `preload` forces high-priority download of a critical resource needed immediately on the current page (like hero images or critical fonts). `prefetch` downloads low-priority resources in background idle time that are expected to be needed on the next navigation."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">Why is AVIF superior to WebP and JPEG, and how do you implement progressive fallback?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "AVIF is derived from the AV1 video codec and delivers roughly 50% file size reduction compared to JPEG and 20% compared to WebP at equivalent visual fidelity, with superior handling of gradients and high contrast. I implement fallback using the HTML `<picture>` element with `<source type='image/avif'>`, followed by `<source type='image/webp'>`, and ending with a standard `<img>` JPEG fallback for legacy browsers."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">How do you analyze bundle bloat and prune heavy dependencies from a React application?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I generate visual bundle treemaps using `rollup-plugin-visualizer` or `webpack-bundle-analyzer` to spot disproportionate modules. I target common bloat culprits: replacing Moment.js with `date-fns` or native `Intl`, replacing Lodash with individual Lodash-es functions or modern native ES methods, dynamically importing heavy charting libraries via `React.lazy`, and verifying that `package.json` libraries support ESM."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is Total Blocking Time (TBT) and how does it correlate with INP?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "TBT is a synthetic lab metric measuring the total duration between FCP and Time to Interactive (TTI) where the main thread was blocked by tasks exceeding 50ms (summing the blocking portion of each task). While TBT is measured in the lab without user interaction, it strongly correlates with field INP because an application with high TBT has an overloaded main thread that will inevitably cause input delays when real users click."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">How does fetchpriority="high" impact resource scheduling in Chromium engines?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "By default, images have 'Low' network fetch priority in the browser resource scheduler until initial layout finishes. When you apply `fetchpriority='high'`, the browser elevates the image to 'High' priority alongside render-blocking CSS and early scripts. This allows the network stream to download the hero LCP image concurrently with early resources rather than waiting in the queue, shaving hundreds of milliseconds off LCP."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">How do you track Core Web Vitals in production without impacting page performance?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I use the lightweight official `web-vitals` library (under 2KB) which hooks into browser `PerformanceObserver` APIs. To transmit metric telemetry to analytics without blocking user interaction or delaying page unloads, I send payloads via `navigator.sendBeacon()`, or `fetch()` with `keepalive: true`. This queues transmissions directly to the browser network stack asynchronously with zero main-thread overhead."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

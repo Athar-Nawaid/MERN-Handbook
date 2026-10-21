@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 22: PostgreSQL Transactions and Concurrency | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master PostgreSQL transactions and concurrency: ACID guarantees, isolation levels, MVCC xmin/xmax tuple internals, row vs table locking, deadlocks, and optimistic vs pessimistic concurrency.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="22">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART IV — PostgreSQL and SQL</div>
+          <h1 class="chapter-title">Chapter 22: PostgreSQL Transactions and Concurrency</h1>
+          <p class="chapter-lead">
+            Under the hood of transactional data systems: ACID mechanics, Write-Ahead Logging (WAL), transaction isolation levels (Read Committed to Serializable), Multi-Version Concurrency Control (MVCC) tuple visibility (xmin/xmax), explicit row locking, deadlock detection, and optimistic vs pessimistic concurrency.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">MVCC & Locking</span>
+              <span class="meta-pill">Isolation Levels</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand the <strong>ACID Guarantees</strong> and how PostgreSQL achieves durability and atomicity through <strong>Write-Ahead Logging (WAL)</strong> and checkpoints.</li>
+            <li>Master the four SQL standard <strong>Isolation Levels</strong> and how PostgreSQL maps them (Read Committed, Repeatable Read, Serializable).</li>
+            <li>Diagnose the four classic <strong>Read Phenomena</strong>: Dirty Reads, Non-Repeatable Reads, Phantom Reads, and Serialization Anomalies.</li>
+            <li>Deconstruct PostgreSQL's <strong>Multi-Version Concurrency Control (MVCC)</strong>: <code>xmin</code>, <code>xmax</code>, tuple versioning, bloat, and the autovacuum daemon.</li>
+            <li>Apply explicit row-level locking: <code>SELECT ... FOR UPDATE</code>, <code>FOR NO KEY UPDATE</code>, <code>FOR SHARE</code>, and <code>SKIP LOCKED</code> for high-throughput job queues.</li>
+            <li>Implement <strong>Pessimistic vs Optimistic Concurrency Control (OCC)</strong> using version columns and compare-and-swap semantics.</li>
+            <li>Diagnose, log, and prevent <strong>Deadlocks</strong> by establishing deterministic lock ordering across concurrent application transactions.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. ACID Guarantees in PostgreSQL</h2>
+        <p>
+          In relational databases, a <strong>Transaction</strong> is a single logical unit of work consisting of one or more SQL operations. To ensure data integrity in the face of network partitions, crashes, and concurrent clients, PostgreSQL guarantees <strong>ACID</strong> properties:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th>Definition</th>
+                <th>PostgreSQL Internal Mechanism</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Atomicity</strong></td>
+                <td>"All or Nothing." If any statement in a transaction fails or crashes, all previous modifications are rolled back completely.</td>
+                <td>Tracked via transaction status in the Commit Log (<code>pg_xact</code>). Uncommitted tuples remain invisible to other transactions.</td>
+              </tr>
+              <tr>
+                <td><strong>Consistency</strong></td>
+                <td>A transaction transforms the database from one valid state to another, strictly satisfying all declared constraints (Foreign Keys, CHECK, UNIQUE, NOT NULL).</td>
+                <td>Engine-enforced constraint validation during execution and deferred constraint verification at <code>COMMIT</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>Isolation</strong></td>
+                <td>Concurrent transactions execute without stepping on each other's intermediate state, appearing as if they executed sequentially.</td>
+                <td><strong>Multi-Version Concurrency Control (MVCC)</strong> snapshots and table/row-level locks.</td>
+              </tr>
+              <tr>
+                <td><strong>Durability</strong></td>
+                <td>Once a transaction commits, its changes survive permanently, even in the event of an immediate operating system crash or power outage.</td>
+                <td><strong>Write-Ahead Logging (WAL)</strong>: Changes are flushed sequentially to append-only disk logs before the client receives the commit confirmation.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>1.1 How Write-Ahead Logging (WAL) Works</h3>
+        <p>
+          Modifying database data files on disk directly on every commit is too slow because it requires random I/O writes across scattered disk pages.
+        </p>
+        <p>
+          Instead, PostgreSQL writes changes sequentially to an append-only log called the <strong>Write-Ahead Log (WAL)</strong>:
+        </p>
+        <ol>
+          <li>Data changes are made to in-memory pages in the <strong>Shared Buffers</strong> pool (creating "dirty pages").</li>
+          <li>A WAL record describing the mutation is appended and flushed to disk using <code>fsync()</code>.</li>
+          <li>Once the WAL record is safely persisted to disk, the transaction is marked as committed and success is returned to the client.</li>
+          <li>Periodically, a background process called the <strong>Checkpointer</strong> flushes the accumulated dirty in-memory pages from Shared Buffers to the actual table data files on disk. If the server loses power, PostgreSQL replays the WAL log from the last checkpoint upon restart (Crash Recovery).</li>
+        </ol>
+
+        <!-- Section 2 -->
+        <h2>2. Transaction Isolation Levels & Read Phenomena</h2>
+        <p>
+          The SQL standard defines four transaction isolation levels to balance consistency against concurrency. Lower isolation levels increase transaction throughput but allow subtle concurrency anomalies:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Isolation Level</th>
+                <th>Dirty Read</th>
+                <th>Non-Repeatable Read</th>
+                <th>Phantom Read</th>
+                <th>Serialization Anomaly</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Read Uncommitted</strong></td>
+                <td>Allowed by SQL standard (<strong>PostgreSQL treats as Read Committed!</strong>)</td>
+                <td>Possible</td>
+                <td>Possible</td>
+                <td>Possible</td>
+              </tr>
+              <tr>
+                <td><strong>Read Committed</strong> (PostgreSQL Default)</td>
+                <td><strong>Prevented</strong></td>
+                <td>Possible</td>
+                <td>Possible</td>
+                <td>Possible</td>
+              </tr>
+              <tr>
+                <td><strong>Repeatable Read</strong></td>
+                <td><strong>Prevented</strong></td>
+                <td><strong>Prevented</strong></td>
+                <td><strong>Prevented in PostgreSQL!</strong></td>
+                <td>Possible (e.g. Write Skew)</td>
+              </tr>
+              <tr>
+                <td><strong>Serializable</strong></td>
+                <td><strong>Prevented</strong></td>
+                <td><strong>Prevented</strong></td>
+                <td><strong>Prevented</strong></td>
+                <td><strong>Prevented</strong> (Full strict serializability)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>2.1 Deconstructing the Concurrency Phenomena</h3>
+        <ul>
+          <li><strong>Dirty Read:</strong> Transaction A reads uncommitted data written by Transaction B. If Transaction B rolls back, Transaction A acted on data that never officially existed. <em>(PostgreSQL never allows dirty reads under any isolation level!)</em></li>
+          <li><strong>Non-Repeatable Read (Fuzzy Read):</strong> Transaction A reads a row. Transaction B updates or deletes that row and commits. Transaction A re-reads the same row and sees modified or missing values.</li>
+          <li><strong>Phantom Read:</strong> Transaction A executes a range query (e.g. <code>WHERE age &gt; 30</code>). Transaction B inserts a new row matching that predicate and commits. Transaction A re-runs the range query and sees new "phantom" rows.</li>
+          <li><strong>Serialization Anomaly (Write Skew):</strong> Two concurrent transactions read overlapping state, make independent decisions based on that state, and write changes that violate a global business invariant when combined (e.g., two on-call doctors simultaneously request leave because each sees the other doctor still active).</li>
+        </ul>
+
+        <div class="callout callout-note">
+          <div class="callout-title">📌 Statement Snapshot vs Transaction Snapshot</div>
+          <p>
+            In PostgreSQL's default <strong>Read Committed</strong> level, a brand-new snapshot is created at the beginning of <strong>each individual SQL statement</strong>. If another transaction commits between Query 1 and Query 2 in the same transaction, Query 2 sees the new data.
+          </p>
+          <p>
+            In <strong>Repeatable Read</strong>, a single snapshot is created at the beginning of the <strong>first non-transaction-control statement</strong> in the transaction. All subsequent queries throughout the transaction see that exact frozen point-in-time snapshot, regardless of external commits!
+          </p>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. PostgreSQL MVCC Internals: xmin, xmax, and Bloat</h2>
+        <p>
+          In traditional databases, readers block writers and writers block readers. In PostgreSQL, <strong>readers never block writers, and writers never block readers</strong>. This is made possible by <strong>Multi-Version Concurrency Control (MVCC)</strong>.
+        </p>
+
+        <h3>3.1 The Hidden System Columns: xmin and xmax</h3>
+        <p>
+          Every physical row (called a <strong>tuple</strong>) stored in a PostgreSQL table header contains hidden metadata fields:
+        </p>
+        <ul>
+          <li><strong><code>xmin</code>:</strong> The Transaction ID (XID) of the transaction that inserted this tuple.</li>
+          <li><strong><code>xmax</code>:</strong> The Transaction ID of the transaction that deleted or updated this tuple (set to <code>0</code> if active).</li>
+        </ul>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 22.1: PostgreSQL MVCC Row Updating & Versioning</div>
+          <pre class="diagram-content">
+[ Step 1: Initial Insert by Transaction 100 ]
++-----------------------------------------------------------+
+| xmin: 100 | xmax: 0   | id: 1 | balance: $500             | (Active)
++-----------------------------------------------------------+
+
+[ Step 2: Transaction 105 executes UPDATE balance = $600 ]
+PostgreSQL DOES NOT overwrite the row! It writes a brand-new row version:
++-----------------------------------------------------------+
+| xmin: 100 | xmax: 105 | id: 1 | balance: $500             | (Old Version: "Dead Tuple")
++-----------------------------------------------------------+
+| xmin: 105 | xmax: 0   | id: 1 | balance: $600             | (New Version: Active)
++-----------------------------------------------------------+
+
+- Any transaction that started BEFORE Tx 105 committed still reads the $500 version!
+- Any transaction that started AFTER Tx 105 committed reads the $600 version!
+          </pre>
+        </div>
+
+        <h3>3.2 Table Bloat and the Autovacuum Daemon</h3>
+        <p>
+          Because updates and deletes create dead tuples rather than overwriting space, PostgreSQL tables accumulate <strong>dead tuples</strong> over time. This phenomenon is known as <strong>table bloat</strong>.
+        </p>
+        <p>
+          The <strong>VACUUM</strong> process scans tables, reclaims space occupied by dead tuples, and marks those storage slots as reusable for future inserts:
+        </p>
+        <ul>
+          <li><strong>Autovacuum Daemon:</strong> Runs continuously in the background, automatically vacuuming tables whose dead tuple count exceeds configured thresholds (e.g. <code>autovacuum_vacuum_scale_factor = 0.2</code>).</li>
+          <li><strong>VACUUM FULL:</strong> Completely rewrites the entire table on disk to compact space back to the operating system. <strong>Warning:</strong> Acquires an <code>ACCESS EXCLUSIVE</code> lock that completely halts application reads and writes! Avoid in production.</li>
+        </ul>
+
+        <!-- Section 4 -->
+        <h2>4. Row-Level Locking: FOR UPDATE, FOR SHARE, and SKIP LOCKED</h2>
+        <p>
+          When multiple application threads attempt to update the same record concurrently, application-level race conditions occur (e.g. reserving the last concert ticket or deducting from an account balance).
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Lock Mode</th>
+                <th>SQL Syntax</th>
+                <th>What It Locks</th>
+                <th>Conflicts With</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>FOR UPDATE</strong></td>
+                <td><code>SELECT ... FOR UPDATE</code></td>
+                <td>Exclusive row lock. Prevents other transactions from updating, deleting, or locking the row.</td>
+                <td>All other row locks (<code>FOR UPDATE</code>, <code>FOR NO KEY UPDATE</code>, <code>FOR SHARE</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>FOR NO KEY UPDATE</strong></td>
+                <td><code>SELECT ... FOR NO KEY UPDATE</code></td>
+                <td>Weaker lock. Allows concurrent <code>FOR SHARE</code> locks if foreign key columns are not modified.</td>
+                <td><code>FOR UPDATE</code> and other <code>FOR NO KEY UPDATE</code> locks.</td>
+              </tr>
+              <tr>
+                <td><strong>FOR SHARE</strong></td>
+                <td><code>SELECT ... FOR SHARE</code></td>
+                <td>Shared lock. Allows other transactions to read or acquire <code>FOR SHARE</code>, but blocks updates/deletes.</td>
+                <td><code>FOR UPDATE</code> and <code>FOR NO KEY UPDATE</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>SKIP LOCKED</strong></td>
+                <td><code>SELECT ... FOR UPDATE SKIP LOCKED</code></td>
+                <td>Skips any rows already locked by other transactions instead of waiting!</td>
+                <td><strong>The cornerstone of high-performance task queues in PostgreSQL.</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (High-Throughput Job Queue with SKIP LOCKED)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- Worker query: Atomically fetch and lock the next available pending job
+-- Without SKIP LOCKED, 10 workers would contend and wait on the exact same row!
+-- With SKIP LOCKED, each worker instantly grabs the next unlocked job with 0 contention!
+BEGIN;
+
+WITH next_job AS (
+  SELECT id
+  FROM background_jobs
+  WHERE status = 'PENDING'
+  ORDER BY priority DESC, created_at ASC
+  LIMIT 1
+  FOR UPDATE SKIP LOCKED -- Skips rows locked by other concurrent workers!
+)
+UPDATE background_jobs
+SET 
+  status = 'PROCESSING',
+  locked_by = 'worker-node-04',
+  updated_at = NOW()
+FROM next_job
+WHERE background_jobs.id = next_job.id
+RETURNING background_jobs.*;
+
+COMMIT;</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Optimistic vs Pessimistic Concurrency Control</h2>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Strategy</th>
+                <th>Core Concept</th>
+                <th>When to Use</th>
+                <th>Trade-Offs</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Pessimistic Concurrency</strong></td>
+                <td>Assume conflict is frequent. Acquire an explicit database lock (<code>SELECT ... FOR UPDATE</code>) before reading and hold it until the transaction commits.</td>
+                <td>High-contention financial transactions, inventory decrementing, flight seat reservations.</td>
+                <td>High lock contention; slow transactions can hold locks, causing cascading timeouts or deadlocks.</td>
+              </tr>
+              <tr>
+                <td><strong>Optimistic Concurrency (OCC)</strong></td>
+                <td>Assume conflict is rare. Read data without any locks, along with a <code>version INT</code> or <code>updated_at</code> column. When writing, verify the version hasn't changed.</td>
+                <td>Low-contention web applications, document editors, user profile updates.</td>
+                <td>Zero database lock overhead. If conflict occurs, the write is rejected and the application must catch and retry.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript (Optimistic Concurrency Control in Node.js)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// Optimistic Concurrency Control (OCC) pattern: Compare-and-Swap
+export async function updateArticleContent(articleId, newContent, clientProvidedVersion) {
+  // Execute atomic update only if version matches what client read
+  const result = await db.query(
+    `UPDATE articles 
+     SET content = $1, version = version + 1, updated_at = NOW() 
+     WHERE id = $2 AND version = $3 
+     RETURNING *`,
+    [newContent, articleId, clientProvidedVersion]
+  );
+
+  // If rowCount is 0, someone else updated the article in the meantime!
+  if (result.rowCount === 0) {
+    const error = new Error("Conflict: This article was modified by another user. Please reload.");
+    error.statusCode = 409; // HTTP 409 Conflict
+    throw error;
+  }
+
+  return result.rows[0];
+}</code></pre>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Deadlocks: Causes, Detection, and Prevention</h2>
+        <p>
+          A <strong>Deadlock</strong> occurs when two or more transactions hold locks that the other transactions need to proceed, creating a circular dependency where neither transaction can finish:
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 22.2: Circular Deadlock Dependency</div>
+          <pre class="diagram-content">
+[ Transaction 1 ]                              [ Transaction 2 ]
+Holds Lock on Account A                        Holds Lock on Account B
+Wants Lock on Account B (Waits...)             Wants Lock on Account A (Waits...)
+          \                                          /
+           \-------------> [ DEADLOCK! ] &lt;----------/
+          </pre>
+        </div>
+
+        <h3>6.1 Deadlock Detection in PostgreSQL</h3>
+        <p>
+          PostgreSQL does not check for deadlocks on every lock request because building dependency wait-for graphs is computationally expensive.
+        </p>
+        <p>
+          Instead, PostgreSQL waits for the duration specified by <code>deadlock_timeout</code> (default: <strong>1 second</strong>). If a transaction has been waiting for a lock for longer than 1 second, the engine initiates a deadlock check. If a cycle is detected, PostgreSQL automatically terminates one of the offending transactions with error code <code>40P01</code> (deadlock detected), allowing the other transaction to complete!
+        </p>
+
+        <h3>6.2 Prevention Rule: Deterministic Lock Acquisition Order</h3>
+        <p>
+          The most robust defense against deadlocks is application discipline: <strong>always acquire locks in a globally consistent, deterministic order</strong> (e.g. sorted by primary key ID).
+        </p>
+
+        <div class="code-block" data-lang="sql">
+          <div class="code-header">
+            <span class="code-lang">sql (Deadlock-Free Fund Transfer Pattern)</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-sql">-- DEADLOCK-PRONE:
+-- Tx 1 transfers from Account 1 to Account 2 (locks 1 then 2)
+-- Tx 2 transfers from Account 2 to Account 1 (locks 2 then 1) --> DEADLOCK!
+
+-- DEADLOCK-FREE PATTERN: Always lock lower ID first!
+CREATE OR REPLACE FUNCTION transfer_funds(
+  from_account INT, 
+  to_account INT, 
+  amount NUMERIC
+) RETURNS VOID AS $$
+DECLARE
+  first_lock INT;
+  second_lock INT;
+BEGIN
+  -- Determine strictly sorted order regardless of transfer direction!
+  IF from_account &lt; to_account THEN
+    first_lock := from_account;
+    second_lock := to_account;
+  ELSE
+    first_lock := to_account;
+    second_lock := from_account;
+  END IF;
+
+  -- Lock both rows in guaranteed ascending order
+  PERFORM * FROM accounts WHERE id = first_lock FOR UPDATE;
+  PERFORM * FROM accounts WHERE id = second_lock FOR UPDATE;
+
+  -- Execute transfers safely
+  UPDATE accounts SET balance = balance - amount WHERE id = from_account;
+  UPDATE accounts SET balance = balance + amount WHERE id = to_account;
+END;
+$$ LANGUAGE plpgsql;</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-tag">Exercise 22.1</span>
+            <span class="exercise-title">Build a Concurrency-Safe Inventory Reservation System</span>
+          </div>
+          <p>
+            <strong>Problem:</strong> An e-commerce flash sale has 10 units of an item. 1,000 users attempt to checkout simultaneously. Implement a PostgreSQL PL/pgSQL function or transaction that decrements inventory safely without overselling, guarantees no deadlocks, and returns immediately if stock is depleted.
+          </p>
+          <details class="solution-details">
+            <summary class="solution-toggle">View Complete Solution</summary>
+            <div class="solution-body">
+              <div class="code-block" data-lang="sql">
+                <div class="code-header">
+                  <span class="code-lang">sql</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-sql">-- Atomic Single-Statement Reservation Pattern (Zero lock wait overhead!)
+-- A single UPDATE statement is inherently atomic in PostgreSQL and operates under implicit row locking.
+CREATE OR REPLACE FUNCTION reserve_inventory(
+  p_product_id UUID, 
+  p_quantity INT
+) RETURNS BOOLEAN AS $$
+DECLARE
+  rows_updated INT;
+BEGIN
+  UPDATE products
+  SET 
+    stock_quantity = stock_quantity - p_quantity,
+    updated_at = NOW()
+  WHERE id = p_product_id AND stock_quantity &gt;= p_quantity;
+
+  GET DIAGNOSTICS rows_updated = ROW_COUNT;
+
+  -- Returns TRUE if reserved, FALSE if stock was insufficient!
+  RETURN (rows_updated &gt; 0);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Usage in Node.js / Express:
+-- const reserved = await db.query('SELECT reserve_inventory($1, $2)', [productId, 1]);
+-- if (!reserved.rows[0].reserve_inventory) { return res.status(409).json({ error: "Out of stock!" }); }</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 8: Interview Questions -->
+        <section class="qa-section" id="interview-questions">
+          <h2>8. Chapter-Specific Interview Questions and Answers</h2>
+          <p>
+            Master these 20 high-frequency interview questions covering transactions, MVCC, isolation levels, row locks, and concurrency anomalies.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">What are the ACID properties in database systems?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "ACID stands for: Atomicity (all operations within a transaction succeed or all are rolled back), Consistency (data always satisfies all schema constraints and foreign keys), Isolation (concurrent transactions execute independently without observing intermediate uncommitted states), and Durability (committed changes survive permanently via Write-Ahead Logging even across system crashes)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">How does Write-Ahead Logging (WAL) guarantee durability while maintaining high write performance?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Directly modifying table data pages on disk on every commit is slow because it requires random I/O writes. With WAL, PostgreSQL writes data modifications to in-memory Shared Buffers, but synchronously appends a sequential log record to the WAL file on disk before confirming the commit. Sequential disk writes are orders of magnitude faster than random writes. In the event of a power failure, PostgreSQL replays the WAL from the last checkpoint upon reboot to restore full state."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">How does PostgreSQL's MVCC work under the hood using xmin and xmax?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "PostgreSQL does not overwrite rows in place. Every tuple has header fields: `xmin` (the transaction ID that inserted it) and `xmax` (the transaction ID that deleted or updated it). When an UPDATE occurs, PostgreSQL sets `xmax` on the old tuple and inserts a brand-new tuple with a new `xmin`. Each transaction has an active snapshot defining which transaction IDs are visible. A transaction only reads tuples whose `xmin` has committed and whose `xmax` is either uncommitted or greater than the snapshot point."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is Table Bloat in PostgreSQL, and how does the autovacuum process address it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Table bloat occurs because updates and deletes leave old dead tuples on disk. Over time, tables and B-Tree indexes consume unnecessary disk space and require extra page I/O reads. The `autovacuum` background daemon periodically scans tables, finds dead tuples that are no longer visible to any active transaction snapshot, and marks their space in the Free Space Map (FSM) so future inserts can reuse those physical disk slots without expanding the table file."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is the difference between Read Committed and Repeatable Read isolation levels in PostgreSQL?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In the default Read Committed level, a new snapshot is generated at the start of each individual SQL statement within the transaction. If another transaction commits changes between two SELECT statements, the second SELECT will see those changes. In Repeatable Read, a single snapshot is captured at the start of the first statement and held for the entire transaction; all subsequent queries see that identical frozen point in time, preventing non-repeatable reads and phantom reads."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">Can Dirty Reads occur in PostgreSQL?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "No. Even if you explicitly configure `SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED`, PostgreSQL internally treats it as Read Committed. Due to its MVCC architecture, uncommitted tuples lack committed `xmin` stamps and are physically invisible to other transactions, making dirty reads impossible in PostgreSQL."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">What is the Serialization Anomaly (Write Skew), and how does the Serializable isolation level prevent it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Write Skew occurs when two concurrent transactions read overlapping datasets, make decisions based on that state, and write changes that break a global business invariant when executed concurrently (e.g. two doctors taking leave simultaneously). Serializable Snapshot Isolation (SSI) tracks read-write dependency locks (SIREAD locks) in memory. If a dangerous cycle of dependencies is detected, PostgreSQL aborts one transaction with error 40001 (serialization_failure), allowing the application to retry."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is the difference between SELECT ... FOR UPDATE and SELECT ... FOR SHARE?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`FOR UPDATE` acquires an exclusive row lock, preventing any other transaction from locking, modifying, or deleting the selected rows until the transaction ends. `FOR SHARE` acquires a shared read lock: multiple transactions can hold `FOR SHARE` locks on the same row concurrently, but any transaction attempting to update or delete those rows will be blocked until all shared locks release."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">Why is SELECT ... FOR UPDATE SKIP LOCKED essential for building task queues in PostgreSQL?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Without `SKIP LOCKED`, if 10 concurrent worker processes query `SELECT ... FROM jobs WHERE status = 'PENDING' LIMIT 1 FOR UPDATE`, all workers target the same first job row. One worker locks it, while the other 9 workers block and wait. With `SKIP LOCKED`, workers automatically skip any rows currently locked by peers and immediately lock the next available unlocked job, enabling lock-free concurrent job distribution with zero wait time."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What is a Deadlock, and how does PostgreSQL detect and resolve it?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A deadlock occurs when two transactions have circular lock dependencies: Tx 1 holds Lock A and waits for Lock B, while Tx 2 holds Lock B and waits for Lock A. PostgreSQL has a `deadlock_timeout` timer (default 1s). When a transaction waits for a lock longer than 1 second, PostgreSQL runs a cycle-detection algorithm on the wait-for graph. If a cycle exists, PostgreSQL terminates one transaction with error 40P01, allowing the other to proceed."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">How do you prevent deadlocks in financial fund transfers between two accounts?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Deadlocks during transfers happen when Tx 1 transfers from A to B (locking A then B), and Tx 2 transfers from B to A (locking B then A). The golden rule is Deterministic Lock Ordering: always acquire locks in sorted order of primary key ID (`min(A, B)` first, then `max(A, B)`), regardless of who is sending or receiving money. Since both transactions acquire locks in identical numerical order, circular lock cycles are mathematically impossible."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is Optimistic Concurrency Control (OCC), and how is it implemented in SQL?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "OCC assumes conflicts are rare and avoids holding database locks. A `version INT` column is added to the table. When updating, the query executes a Compare-and-Swap: `UPDATE items SET val = $1, version = version + 1 WHERE id = $2 AND version = $3`. If another user updated the item in the meantime, the version no longer matches, the update affects 0 rows, and the application detects the conflict and informs the user to refresh."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What are PostgreSQL Advisory Locks, and when should you use them?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Advisory locks are application-defined distributed mutexes managed by PostgreSQL (`pg_advisory_lock(int)` or `pg_try_advisory_lock(int)`). They do not lock physical tables or rows; instead, they lock an arbitrary 64-bit integer key. They are ideal for synchronizing application-level operations—such as ensuring only one instance of a nightly cron job runs across a cluster of 20 microservices—without needing a separate Redis instance."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is a Checkpoint in PostgreSQL, and why does it occur?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A checkpoint is a periodic point in the WAL transaction log where PostgreSQL flushes all modified dirty data pages from in-memory Shared Buffers to physical disk files. Once completed, a checkpoint record is written to the WAL. Checkpoints bound crash recovery time: if the database crashes, it only needs to replay WAL logs recorded since the latest checkpoint."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is the Heap-Only Tuples (HOT) optimization in PostgreSQL?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "HOT allows PostgreSQL to update a row without adding new index entries if: 1. No indexed columns were modified, and 2. The new tuple version fits inside the same data page as the old tuple. The old tuple points directly to the new tuple via an intra-page pointer chain. This drastically reduces index bloat and disk write I/O during frequent column updates."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">Scenario: A flash sale has 1 product remaining. Two users click 'Buy' at the exact same millisecond. How do you prevent overselling using a single SQL query?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Execute an atomic conditional update: `UPDATE products SET stock = stock - 1 WHERE id = $1 AND stock >= 1 RETURNING *`. Because an individual UPDATE statement executes under an implicit row lock in PostgreSQL, the engine serializes the two queries. The first query succeeds and decrements stock to 0. The second query tests `stock >= 1`, finds 0, updates nothing, and returns 0 rows, signaling out-of-stock without needing complex transaction blocks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is the difference between VACUUM and VACUUM FULL?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Standard `VACUUM` runs concurrently with active queries without locking; it frees dead tuple space within data pages for future inserts, but does NOT return empty disk space to the OS. `VACUUM FULL` physically rewrites the entire table into a new disk file to compact all space back to the OS. However, `VACUUM FULL` requires an `ACCESS EXCLUSIVE` lock, completely blocking all reads and writes until it finishes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is Transaction ID (XID) Wraparound, and how does PostgreSQL prevent catastrophic data loss?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "PostgreSQL uses 32-bit transaction IDs, which wrap around after ~4 billion transactions. Without protection, a wrapped-around transaction would treat old historical transactions as occurring in the future, rendering past data invisible. Autovacuum prevents this by running 'aggressive freezing': it replaces old `xmin` values with a special frozen transaction ID `FrozenTransactionId` (2), guaranteeing older data remains permanently visible."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">What is the difference between a table-level ACCESS SHARE lock and an ACCESS EXCLUSIVE lock?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`ACCESS SHARE` is acquired automatically by read queries (`SELECT`); it only conflicts with `ACCESS EXCLUSIVE`. `ACCESS EXCLUSIVE` is the heaviest lock in PostgreSQL, acquired by commands like `ALTER TABLE`, `DROP TABLE`, and `VACUUM FULL`. It conflicts with ALL other lock modes, completely blocking all concurrent reads, inserts, and updates."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">Why should you avoid long-running transactions in PostgreSQL?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A long-running transaction holds its snapshot open. Autovacuum CANNOT clean up any dead tuples created after that snapshot's `xmin`! This causes massive table and index bloat across the entire database. Additionally, long transactions hold row or table locks, blocking DDL migrations and accumulating queue locks, and prevent WAL log truncation, risking disk space exhaustion."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

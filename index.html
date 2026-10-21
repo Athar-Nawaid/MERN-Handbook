@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Full-Stack Developer Interview Preparation Book | MERN & Backend Mastery</title>
+  <meta name="description" content="A comprehensive, beginner-to-senior interview preparation handbook and interactive study guide covering JavaScript, Node.js, Express, React, Redux Toolkit, PostgreSQL, MongoDB, System Design, and Production DevOps.">
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="assets/css/theme.css">
+  <link rel="stylesheet" href="assets/css/code.css">
+  <link rel="stylesheet" href="assets/css/main.css">
+  <link rel="stylesheet" href="assets/css/print.css" media="print">
+
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚀</text></svg>">
+</head>
+<body class="home-page">
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+        </svg>
+        <span>FullStack.Prep</span>
+        <span class="brand-badge">2026 Edition</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search curriculum...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+
+      <a href="https://github.com" target="_blank" rel="noopener noreferrer" class="header-btn" title="View Source on GitHub">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero-section">
+    <div class="hero-badge">
+      <span>⚡ Built for 1–2 Year & Mid-Level Engineering Interviews</span>
+    </div>
+    <h1 class="hero-title">The Complete Full-Stack Developer <span>Interview Handbook</span></h1>
+    <p class="hero-subtitle">
+      A self-contained, rigorous curriculum spanning JavaScript, Node.js, Express, React, Redux Toolkit, PostgreSQL, MongoDB, System Design, and Production DevOps. Zero fluff, deep internal mechanics, practical code, and 890+ curated interview questions with spoken answers.
+    </p>
+
+    <div class="hero-actions">
+      <a href="chapters/ch01-how-the-web-works.html" class="btn btn-primary">
+        <span>Start Reading Chapter 1</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </a>
+      <button class="btn btn-secondary search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search Question Bank</span>
+      </button>
+    </div>
+
+    <!-- Progress & Learning Dashboard -->
+    <div class="dashboard-stats">
+      <div class="stat-card">
+        <div class="stat-val">45</div>
+        <div class="stat-label">In-Depth Chapters</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val">9</div>
+        <div class="stat-label">Core Parts</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val progress-percentage-text">0%</div>
+        <div class="stat-label">Your Completion</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val progress-fraction-text">0 / 45</div>
+        <div class="stat-label">Chapters Finished</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Layout for Chapters Directory -->
+  <main class="main-layout" style="max-width: 1280px; margin: 0 auto; width: 100%; padding: 0 1.5rem 4rem 1.5rem;">
+    <div style="width: 100%;">
+      
+      <!-- Interactive Filter Bar -->
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 2rem; gap: 1rem; border-bottom: 1px solid var(--border-light); padding-bottom: 1.5rem;">
+        <div>
+          <h2 style="font-size: 1.5rem; margin: 0; border: none; padding: 0;">Table of Contents</h2>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0.25rem 0 0 0;">Browse all 45 chapters across the 9 core full-stack pillars.</p>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <input type="text" id="chapter-filter-input" placeholder="Filter by keyword (e.g. Docker, SQL, Hooks)..." style="padding: 0.5rem 0.85rem; border: 1px solid var(--border-medium); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text-primary); font-size: 0.88rem; width: 280px;">
+        </div>
+      </div>
+
+      <!-- Parts Container (Populated dynamically from book-data.js) -->
+      <div id="curriculum-container">
+        <!-- Rendered by client script -->
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <p><strong>Full-Stack Developer Interview Preparation Book</strong> — Built for ambitious engineers preparing for technical rounds.</p>
+      <p style="font-size: 0.8rem; color: var(--text-muted);">
+        Compatible with GitHub Pages. Self-contained with offline support, local progress saving, zero tracking, and no external API dependencies.
+      </p>
+      <div style="display: flex; gap: 1.5rem; margin-top: 0.5rem; font-size: 0.85rem;">
+        <a href="index.html" style="color: var(--accent-primary); text-decoration: none;">Dashboard</a>
+        <a href="chapters/ch01-how-the-web-works.html" style="color: var(--accent-primary); text-decoration: none;">Chapter 1</a>
+        <a href="BOOK_PROGRESS.md" style="color: var(--text-muted); text-decoration: none;">Progress Ledger</a>
+        <a href="README.md" style="color: var(--text-muted); text-decoration: none;">Documentation</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="assets/js/book-data.js"></script>
+  <script src="assets/js/theme.js"></script>
+  <script src="assets/js/progress.js"></script>
+  <script src="assets/js/prism.js"></script>
+  <script src="assets/js/search.js"></script>
+  
+  <script>
+    // Homepage UI Renderer
+    document.addEventListener("DOMContentLoaded", () => {
+      const container = document.getElementById("curriculum-container");
+      if (!container || !window.BOOK_CURRICULUM) return;
+
+      function renderCurriculum(filterQuery = "") {
+        const query = filterQuery.trim().toLowerCase();
+        let html = "";
+
+        window.BOOK_CURRICULUM.parts.forEach((part) => {
+          const matchingChapters = part.chapters.filter((ch) => {
+            if (!query) return true;
+            const hay = `${ch.title} ${ch.description} ${(ch.tags || []).join(" ")}`.toLowerCase();
+            return hay.includes(query);
+          });
+
+          if (matchingChapters.length === 0) return;
+
+          html += `
+            <div class="part-card" data-part-id="${part.id}">
+              <div class="part-card-header">
+                <h3 class="part-card-title">${part.title}</h3>
+                <p class="part-card-desc">${part.description}</p>
+              </div>
+              <div class="chapter-grid">
+          `;
+
+          matchingChapters.forEach((ch) => {
+            const isCompleted = window.ProgressManager && window.ProgressManager.isCompleted(ch.id);
+            const isBookmarked = window.ProgressManager && window.ProgressManager.isBookmarked(ch.id);
+
+            let statusPill = "";
+            if (isCompleted) {
+              statusPill = `<span class="meta-pill" style="background: var(--success-bg); color: var(--success-text); border-color: var(--success-border);">✓ Completed</span>`;
+            } else if (isBookmarked) {
+              statusPill = `<span class="meta-pill" style="background: var(--warning-bg); color: var(--warning-text); border-color: var(--warning-border);">★ Revision</span>`;
+            }
+
+            html += `
+              <a href="chapters/${ch.slug}" class="chapter-tile">
+                <div class="tile-header">
+                  <span class="tile-ch-num">Chapter ${ch.id}</span>
+                  ${statusPill}
+                </div>
+                <h4 class="tile-title">${ch.title.split(": ")[1] || ch.title}</h4>
+                <p class="tile-desc">${ch.description}</p>
+                <div class="tile-tags">
+                  ${(ch.tags || []).map((t) => `<span class="tile-tag">${t}</span>`).join("")}
+                </div>
+              </a>
+            `;
+          });
+
+          html += `
+              </div>
+            </div>
+          `;
+        });
+
+        if (!html) {
+          html = `
+            <div style="padding: 3rem; text-align: center; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-light);">
+              <p style="font-size: 1.1rem; font-weight: 600;">No chapters matched "${query}"</p>
+              <p style="font-size: 0.9rem; margin-top: 0.5rem;">Try searching for generic terms like "react", "sql", "event loop", or "security".</p>
+            </div>
+          `;
+        }
+
+        container.innerHTML = html;
+      }
+
+      renderCurriculum();
+
+      const filterInput = document.getElementById("chapter-filter-input");
+      if (filterInput) {
+        filterInput.addEventListener("input", (e) => {
+          renderCurriculum(e.target.value);
+        });
+      }
+
+      window.addEventListener("book-progress-updated", () => {
+        renderCurriculum(filterInput ? filterInput.value : "");
+      });
+    });
+  </script>
+</body>
+</html>
+

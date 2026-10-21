@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 36: Practical System Design Scenarios | Full-Stack Interview Guide</title>
+  <meta name="description" content="Master production system design scenarios: URL Shortener, Real-Time Distributed Chat, High-Scale Rate Limiter, and Multi-Channel Notification Engine.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="36">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART VII — System Design and Distributed Systems</div>
+          <h1 class="chapter-title">Chapter 36: Practical System Design Scenarios</h1>
+          <p class="chapter-lead">
+            End-to-end architectural blueprints for four high-frequency technical interview prompts: Designing a Scalable URL Shortener (TinyURL), a Real-Time Distributed Chat Platform (Slack/WhatsApp), a High-Throughput Distributed Rate Limiter, and an Enterprise Multi-Channel Notification Engine.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">4 Full System Blueprints</span>
+              <span class="meta-pill">TinyURL &amp; Real-Time Chat</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Design a <strong>Scalable URL Shortener (TinyURL)</strong>: Base62 encoding, Token Range unique ID generation, and sub-10ms redirect latency.</li>
+            <li>Architect a <strong>Real-Time Distributed Chat Service</strong>: WebSocket connection gateways, Redis connection routing, presence heartbeats, and message ordering.</li>
+            <li>Construct a <strong>Distributed Rate Limiter</strong>: compare algorithms (Token Bucket vs Sliding Window Counter) and Redis Lua script synchronization.</li>
+            <li>Build an Enterprise <strong>Notification Engine</strong>: channel abstraction, priority queues, user preference gating, and Dead-Letter Queue resiliency.</li>
+            <li>Confidently lead architectural discussions during Senior Full-Stack and Backend technical interviews.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Scenario 1: Design a Scalable URL Shortener (TinyURL / Bitly)</h2>
+
+        <h3>Requirements &amp; Capacity Estimation</h3>
+        <ul>
+          <li><strong>Functional Requirements:</strong> 1) Given a long URL, return a unique short URL (e.g., <code>https://tiny.cc/a8f2Q</code>); 2) Redirect requests visiting the short URL to the original long URL with sub-10ms latency; 3) Expire links after a configurable TTL.</li>
+          <li><strong>Scale &amp; Math:</strong>
+            <ul>
+              <li>500 Million new URLs created per month \(\rightarrow \approx 200\text{ write QPS}\).</li>
+              <li>Read-to-Write ratio is 100:1 \(\rightarrow 20,000\text{ read QPS}\) (Peak: \(40,000\text{ QPS}\)).</li>
+              <li>10-year storage: \(500\text{M} \times 12 \times 10 = 60\text{ Billion records} \times 500\text{ bytes} \approx 30\text{ Terabytes}\).</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h3>Short Code Generation: Base62 vs. Token Range</h3>
+        <p>
+          A 7-character string using alphanumeric characters (<code>a–z, A–Z, 0–9</code> = 62 characters) yields:
+          \[
+          62^7 \approx 3.52 \text{ Trillion unique combinations}
+          \]
+          This comfortably exceeds our 60 Billion 10-year requirement.
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Token Range Service ID Allocation</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">                     +---------------------------------+
+                     |   Token Range Service (ZooKeeper)|
+                     |   Maintains global ID ranges    |
+                     +---------------------------------+
+                                      |
+         +----------------------------+----------------------------+
+         | (Allocates range 1M–2M)    | (Allocates range 2M–3M)    | (Allocates range 3M–4M)
+         v                            v                            v
++------------------+         +------------------+         +------------------+
+| App Server 1     |         | App Server 2     |         | App Server 3     |
+| Generates IDs:   |         | Generates IDs:   |         | Generates IDs:   |
+| 1,000,001 -&gt; Base62|       | 2,000,001 -&gt; Base62|       | 3,000,001 -&gt; Base62|
++------------------+         +------------------+         +------------------+
+         |                            |                            |
+         +----------------------------+----------------------------+
+                                      |
+                                      v
+                     +---------------------------------+
+                     | Database: Key-Value / Relational|
+                     | Primary Key: short_code (Index) |
+                     +---------------------------------+</code></pre>
+        </div>
+
+        <h3>The Architectural Diagram</h3>
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: URL Shortener High-Level Architecture</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">User Browser
+     |
+     | 1. GET /a8f2Q
+     v
+[ Cloudflare CDN Edge ] --(Cache Hit: 2ms)--&gt; 301 / 307 Redirect!
+     |
+     | (Cache Miss)
+     v
+[ AWS ALB Load Balancer ]
+     |
+     v
+[ URL Shortener Node.js Cluster ]
+     |
+     +---&gt; 2. Check Redis Cache-Aside (90% Hit: 3ms)
+     |
+     +---&gt; 3. Cache Miss: Query PostgreSQL / DynamoDB (10ms)
+     |        SELECT original_url FROM urls WHERE short_code = 'a8f2Q';
+     |
+     +---&gt; 4. Asynchronously push click event to Kafka for Click Analytics
+     |
+     v
+Redirect Response (302 Found or 307 Temporary Redirect)</code></pre>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">💡 301 Moved Permanently vs. 302/307 Temporary Redirect</div>
+          <p>
+            Returning <code>301 Moved Permanently</code> causes browsers to cache the redirect locally, eliminating future server hits. However, if your business requires collecting <strong>click analytics</strong> (referrers, location, click counts), you must return <code>302 Found</code> or <code>307 Temporary Redirect</code> so every click reaches your server.
+          </p>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Scenario 2: Design a Real-Time Chat Engine (Slack / WhatsApp)</h2>
+
+        <h3>Core Challenges</h3>
+        <ol>
+          <li><strong>Persistent Connections:</strong> HTTP request-response is unsuitable for real-time messaging due to connection overhead; requires <strong>WebSockets</strong>.</li>
+          <li><strong>Cross-Server Message Routing:</strong> User A is connected to WebSocket Server 1, while User B is connected to WebSocket Server 2. How does Server 1 deliver User A’s message to User B?</li>
+          <li><strong>Online Presence Tracking:</strong> How do thousands of users know which friends are currently online without polling?</li>
+        </ol>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Real-Time Distributed Chat Architecture</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">User A (Mobile)                                          User B (Web)
+   |                                                        ^
+   | (WebSocket)                                            | (WebSocket)
+   v                                                        |
+[ WS Gateway 1 ]                                     [ WS Gateway 2 ]
+   |                                                        ^
+   |-- 1. Send Message { to: &quot;UserB&quot;, text: &quot;Hi!&quot; }         |
+   |                                                        |
+   |-- 2. Lookup User B location in Redis Session Registry -|
+   |      GET &quot;session:UserB&quot; -&gt; Returns &quot;WS_Gateway_2&quot;     |
+   |                                                        |
+   |-- 3. Publish to Redis Pub/Sub channel &quot;gateway:2&quot; -----+
+   |
+   |-- 4. Persist message asynchronously to Cassandra / ScyllaDB
+   |      (Partition Key: conversation_id, Clustering Key: message_id DESC)
+   |
+   +-- 5. (If User B offline) -&gt; Enqueue Push Notification (FCM / APNS)</code></pre>
+        </div>
+
+        <h3>Presence Service Design</h3>
+        <p>
+          Clients send a lightweight heartbeat ping every 30 seconds over their active WebSocket. The gateway runs:
+          <code>SET presence:userId "online" EX 60</code>.
+          If the user's mobile app loses network coverage, the key naturally expires after 60 seconds without explicit teardown logic. When a user opens a chat room, the frontend queries the presence status of room participants via a single Redis <code>MGET</code>.
+        </p>
+
+        <!-- Section 3 -->
+        <h2>3. Scenario 3: Design a Distributed Rate Limiter</h2>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Algorithm</th>
+                <th>How It Works</th>
+                <th>Pros &amp; Cons</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Token Bucket</strong> (Amazon, Stripe)</td>
+                <td>Tokens added to a bucket at a fixed fill rate \(\text{req}/\text{sec}\). Each request removes 1 token. If bucket is empty, request rejected.</td>
+                <td>
+                  <strong>Pros:</strong> Memory efficient; permits bursts of traffic up to bucket capacity.<br>
+                  <strong>Cons:</strong> Two parameters to tune (bucket size, refill rate).
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Leaky Bucket</strong> (Shopify)</td>
+                <td>Requests enter a FIFO queue and are processed at a constant output rate. If queue overflows, new requests drop.</td>
+                <td>
+                  <strong>Pros:</strong> Smooths out bursty traffic into steady outflow.<br>
+                  <strong>Cons:</strong> Bursty traffic experiences latency delays while queued.
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Fixed Window Counter</strong></td>
+                <td>Counts requests within fixed time windows (e.g., 00:00–00:01). Resets counter at window boundary.</td>
+                <td>
+                  <strong>Pros:</strong> Very simple.<br>
+                  <strong>Cons:</strong> <strong>Boundary Burst Flaw:</strong> If limit is 100/min, sending 100 requests at 00:59 and 100 at 01:01 permits 200 requests in 2 seconds!
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Sliding Window Counter</strong> (Cloudflare)</td>
+                <td>Blends the count from the previous window with current window progress: \(\text{Count} = \text{Current} + \text{Previous} \times (1 - \text{overlap})\).</td>
+                <td>
+                  <strong>Pros:</strong> Solves boundary burst problem with minimal memory overhead (only 2 counters per client).
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Distributed Synchronization with Redis Lua Script</h3>
+        <p>
+          To prevent race conditions across multiple Node.js instances executing rate limit checks, the Token Bucket algorithm is evaluated atomically inside Redis using Lua:
+        </p>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">Lua: Atomic Token Bucket Evaluation in Redis</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-lua">-- KEYS[1]: ratelimit:&lt;user_id&gt;
+-- ARGV[1]: max_capacity (e.g. 100)
+-- ARGV[2]: refill_rate_per_sec (e.g. 10)
+-- ARGV[3]: current_timestamp_sec
+-- ARGV[4]: requested_tokens (e.g. 1)
+
+local key = KEYS[1]
+local capacity = tonumber(ARGV[1])
+local refill_rate = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+local requested = tonumber(ARGV[4])
+
+local data = redis.call(&quot;HMGET&quot;, key, &quot;tokens&quot;, &quot;last_updated&quot;)
+local tokens = tonumber(data[1])
+local last_updated = tonumber(data[2])
+
+if not tokens then
+  tokens = capacity
+  last_updated = now
+else
+  -- Calculate tokens generated since last access
+  local elapsed = math.max(0, now - last_updated)
+  tokens = math.min(capacity, tokens + (elapsed * refill_rate))
+  last_updated = now
+end
+
+if tokens &gt;= requested then
+  tokens = tokens - requested
+  redis.call(&quot;HMSET&quot;, key, &quot;tokens&quot;, tokens, &quot;last_updated&quot;, last_updated)
+  redis.call(&quot;EXPIRE&quot;, key, 3600)
+  return 1 -- Allowed
+else
+  return 0 -- Rejected (Rate Limit Exceeded)
+end</code></pre>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. Scenario 4: Design a Scalable Notification Engine</h2>
+
+        <div class="code-block-wrapper">
+          <div class="code-block-header">
+            <span class="code-lang">ASCII Diagram: Multi-Channel Notification Pipeline</span>
+            <button class="copy-code-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-text">Client Services (Orders, Security, Marketing)
+     |
+     | POST /api/v1/notifications { userId, templateId, channel: &quot;EMAIL&quot; }
+     v
+[ Notification Ingestion API ]
+     |
+     +---&gt; 1. Check Idempotency Key (Redis: avoid double sending)
+     |
+     +---&gt; 2. Check User Preferences &amp; Opt-Outs (PostgreSQL / Cache)
+     |
+     +---&gt; 3. Push to BullMQ Priority Message Queue
+              +--------------------------+
+              | Priority Queue (High: OTP)|
+              +--------------------------+
+              | Normal Queue (Orders)    |
+              +--------------------------+
+              | Low Queue (Marketing)    |
+              +--------------------------+
+                           |
+                           v
+              [ Dedicated Channel Workers ]
+               /           |           \
+              v            v            v
+      [ SendGrid SES ]  [ Twilio SMS ] [ Apple APNS / FCM ]
+              |            |            |
+      (If provider fails: Exponential backoff with jitter -&gt; Dead Letter Queue)</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. Practical Exercises</h2>
+        
+        <h3>Exercise 1: Base62 Encoder &amp; Decoder in TypeScript</h3>
+        <p>
+          <strong>Scenario:</strong> Implement a Base62 encoder and decoder in TypeScript to convert a 64-bit integer into a short URL string and vice-versa.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">const BASE62_CHARS = &#39;0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ&#39;;
+
+export function encodeBase62(num: bigint): string {
+  if (num === 0n) return &#39;0&#39;;
+  let result = &#39;&#39;;
+  let n = num;
+  const base = 62n;
+
+  while (n &gt; 0n) {
+    const remainder = Number(n % base);
+    result = BASE62_CHARS[remainder] + result;
+    n = n / base;
+  }
+  return result;
+}
+
+export function decodeBase62(str: string): bigint {
+  let result = 0n;
+  const base = 62n;
+
+  for (let i = 0; i &lt; str.length; i++) {
+    const char = str[i];
+    const index = BigInt(BASE62_CHARS.indexOf(char));
+    if (index === -1n) throw new Error(`Invalid Base62 character: ${char}`);
+    result = result * base + index;
+  }
+  return result;
+}
+
+// Example: encodeBase62(1000000001n) -&gt; &quot;15FTG1&quot;</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <h3>Exercise 2: Distributed Chat Room Connection Router in Node.js</h3>
+        <p>
+          <strong>Scenario:</strong> Write a routing handler that takes an incoming message for a specific room and broadcasts it to all connected local WebSocket clients, while publishing it to Redis Pub/Sub for other cluster nodes.
+        </p>
+
+        <details class="exercise-card">
+          <summary class="exercise-summary">
+            <span>View Complete Solution</span>
+          </summary>
+          <div class="exercise-solution">
+            <div class="code-block-wrapper">
+              <div class="code-block-header">
+                <span class="code-lang">TypeScript Solution</span>
+                <button class="copy-code-btn" type="button">Copy</button>
+              </div>
+              <pre><code class="language-typescript">import Redis from &#39;ioredis&#39;;
+import { WebSocket } from &#39;ws&#39;;
+
+const pub = new Redis();
+const sub = new Redis();
+
+// Map of roomId -&gt; Set of local WebSocket client connections
+const localRooms = new Map&lt;string, Set&lt;WebSocket&gt;&gt;();
+
+// Listen for messages published across cluster
+sub.subscribe(&#39;chat:broadcast&#39;);
+sub.on(&#39;message&#39;, (channel, messageStr) =&gt; {
+  const { roomId, message, originServerId } = JSON.parse(messageStr);
+  const clients = localRooms.get(roomId);
+  if (clients) {
+    for (const ws of clients) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+      }
+    }
+  }
+});
+
+export function handleIncomingClientMessage(
+  roomId: string,
+  message: any,
+  currentServerId: string
+): void {
+  // Publish to Redis so all other cluster gateways deliver to their local connections
+  pub.publish(
+    &#39;chat:broadcast&#39;,
+    JSON.stringify({ roomId, message, originServerId: currentServerId })
+  );
+}</code></pre>
+            </div>
+          </div>
+        </details>
+
+        <!-- Section 6: Interview Questions & Answers -->
+        <section class="interview-questions-section">
+          <h2>6. Chapter-Specific Interview Questions &amp; Answers</h2>
+          <p class="section-lead">
+            20 high-frequency interview questions covering practical system design walkthroughs: URL shorteners, real-time chat, rate limiters, and notification engines.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">Why is Base62 encoding preferred over MD5 or SHA-256 for URL shorteners?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "MD5 and SHA-256 generate 128-bit or 256-bit hashes that require truncation, which immediately introduces hash collisions that require database lookup resolution. Base62 encodes unique auto-incrementing 64-bit integers directly into alphanumeric characters (`[0-9a-zA-Z]`), mathematically guaranteeing zero collisions with maximum character density."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What HTTP status code should a URL shortener return: 301 or 302?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "If the goal is minimizing server load, use 301 Moved Permanently, which browsers aggressively cache locally. However, if the business requires click analytics (tracking location, referrers, device types, or total visits), you must return 302 Found or 307 Temporary Redirect so every click is directed to your server for analytics ingestion."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">Why are WebSockets used for real-time chat rather than HTTP polling?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "HTTP polling repeatedly opens and closes TCP connections and sends repetitive HTTP headers (~1 KB overhead per poll), creating massive CPU and bandwidth drag. WebSockets perform a single HTTP 101 Upgrade handshake to establish a bi-directional, persistent TCP connection, transmitting subsequent messages in tiny 2-byte framing packets with sub-millisecond delivery."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is the Token Bucket rate limiting algorithm?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Token Bucket algorithm models a bucket of fixed capacity that continuously refills with tokens at a constant rate. Each incoming request consumes one token. If tokens are available, the request proceeds; if empty, it is rejected with 429 Too Many Requests. It is widely favored because it easily accommodates temporary traffic bursts up to the bucket capacity."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is the difference between Transactional and Marketing notifications?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Transactional notifications (OTPs, password resets, payment receipts) are urgent, non-optional, and must be delivered within seconds via dedicated high-priority queues. Marketing notifications (promotions, weekly digests) can tolerate delays, must respect user opt-out preferences, and are processed through lower-priority, bulk-throttled queues."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">How does a Token Range Service generate unique IDs across multiple application servers?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A central coordinator like ZooKeeper allocates discrete numeric ranges to each server—e.g., Server A gets 1M–2M, Server B gets 2M–3M. Each server generates sequential IDs locally from its allocated memory range with zero network latency. When a server exhausts its range, it requests a new block from ZooKeeper, guaranteeing globally unique IDs without database bottlenecks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">How do you track user online/offline presence in a real-time chat application at scale?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Clients send a heartbeat ping every 30 seconds over their WebSocket connection. The backend sets a Redis key: `SET presence:userId 'online' EX 60`. If the user disconnects or loses signal, the key naturally expires after 60 seconds without complex teardown logic. Checking presence is an O(1) Redis lookup, and friend lists query status via `MGET`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is the Boundary Burst flaw in Fixed Window rate limiters?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In a Fixed Window counter allowing 100 requests per minute, an attacker can send 100 requests at second 59 and another 100 requests at second 01 of the next minute. Both windows pass successfully, but the server receives 200 requests in a 2-second span—twice the configured rate limit. Sliding window algorithms eliminate this vulnerability."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">How do you prevent duplicate notifications from being delivered to users?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "We enforce Idempotency Keys across the pipeline. When a notification event is ingested, we generate a deterministic key (e.g., `notif:order-shipped:order-123`) and attempt to acquire a Redis reservation (`SET key 1 NX EX 86400`). If the key already exists, the notification is discarded as a duplicate before reaching third-party SMS or email gateways."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">How do you scale message storage for a chat application with billions of messages?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "We use wide-column NoSQL databases like Apache Cassandra or ScyllaDB. The partition key is `conversation_id`, co-locating all messages for a chat room on the same physical cluster nodes, while the clustering key is a time-ordered `message_id` (or Snowflake ID) sorted descending, allowing fast retrieval of the latest 50 messages with zero cross-node joins."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Why should rate limiters be executed inside Redis via Lua scripts?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Evaluating a rate limiter requires reading the current token count, calculating elapsed time, refilling tokens, and decrementing the balance. If executed as separate commands from Node.js, concurrent requests cause race conditions where multiple requests read the same balance. Redis executes Lua scripts atomically on its single thread, eliminating concurrency bugs."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">How does an API Gateway integrate with a Distributed Rate Limiter?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The API Gateway acts as the reverse proxy ingress point. Before routing requests to backend microservices, gateway middleware extracts client identifiers (API key or IP) and queries the distributed rate limiter. If within quota, it forwards the request with rate-limiting headers; if exceeded, it short-circuits immediately with status `429 Too Many Requests`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">How do you deliver chat messages to offline users?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "When the gateway detects that the recipient has no active WebSocket connection, the message is persisted to database storage, and a background task is pushed to an asynchronous queue. The worker formats a mobile push notification payload and dispatches it to Apple APNs or Google FCM, ensuring the user receives a lock screen alert."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What is the 80/20 caching rule applied to URL shorteners?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Pareto Principle dictates that 20% of short URLs generate 80% of total read traffic. In capacity planning, we provision Redis to cache exactly that hot 20% of URLs in RAM. For 20,000 daily read QPS, caching the top 20% guarantees that 80%+ of redirect queries return in 2–3ms directly from memory, shielding the primary database."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">How do you handle a celebrity user with 100,000 participants in a chat room?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Broadcasting a message to 100,000 WebSocket connections on a single server causes event loop lag and network saturation. We treat massive channels as live broadcasts: messages are published to Apache Kafka partitioned across a tree of regional edge gateway clusters. Edge servers fan out messages locally, and presence status is disabled or throttled to batch updates."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">How do you ensure strict chronological message ordering across distributed chat clients?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "We cannot rely on physical client timestamps due to clock drift and timezone differences. Instead, we use a centralized Snowflake ID generator or database sequence number per conversation. Messages within a conversation are ordered by this monotonic integer sequence ID, ensuring consistent ordering across all participant devices."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">How do you handle third-party notification gateway outages (SendGrid / Twilio downtime)?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "We wrap external gateway clients in a Circuit Breaker pattern. If SendGrid returns 5xx errors or timeouts exceeding an error threshold, the circuit trips to OPEN. The worker automatically routes traffic to a fallback provider (e.g., AWS SES), retrying failed jobs using exponential backoff with jitter before moving exhausted attempts to a Dead-Letter Queue."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">How do you prevent URL shortener abuse (phishing, malware redirection)?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Upon long URL submission, the ingestion pipeline checks the target domain against Google Safe Browsing APIs and Spamhaus blocklists. We enforce user authentication for high-volume creation, rate limit creation by IP, and run asynchronous crawlers that periodically verify target destinations haven't been altered to point to malicious redirects."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">How does Sliding Window Counter calculate request allowance mathematically?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "It approximates the rolling window using two static counters: the previous window count and the current window count. The formula is: `Estimated_Requests = Current_Count + Previous_Count * (1 - Current_Window_Progress)`. If current time is 30% into the minute, it factors in 70% of the previous minute's requests, eliminating boundary bursts with only two Redis integer keys."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">What is your framework for handling trade-offs in system design interviews?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I never present a technology as universally superior. Every architectural choice has an engineering cost: choosing microservices adds operational overhead; choosing NoSQL sacrifices ACID transactions; choosing Redis adds memory costs. I explicitly state both the benefit and drawback of each decision, tying it directly to the problem's functional and non-functional requirements."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

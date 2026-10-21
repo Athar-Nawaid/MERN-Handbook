@@ -1,0 +1,123 @@
+/* ==========================================================================
+   PRINT STYLES - Clean, Readable Offline Paper Representation
+   ========================================================================== */
+
+@media print {
+  /* Hide non-content UI elements */
+  .site-header,
+  .sidebar,
+  .table-of-contents-rail,
+  .search-modal,
+  .reading-progress-bar,
+  .copy-button,
+  .chapter-actions,
+  .prev-next-nav,
+  .theme-toggle,
+  .menu-toggle,
+  .btn,
+  .footer-links,
+  .search-trigger {
+    display: none !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .main-layout {
+    display: block !important;
+  }
+
+  .content-area {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* Expand all collapsed accordion items */
+  details {
+    display: block !important;
+  }
+  
+  details[open] summary,
+  details summary {
+    font-weight: bold;
+    list-style: none;
+    margin-bottom: 0.5rem;
+  }
+
+  details > div,
+  .qa-answer {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: auto !important;
+  }
+
+  /* Code blocks formatting for print */
+  pre, code {
+    background: #f4f4f4 !important;
+    color: #111111 !important;
+    border: 1px solid #cccccc !important;
+    page-break-inside: avoid;
+    font-size: 9.5pt !important;
+    white-space: pre-wrap !important;
+    word-break: break-all;
+  }
+
+  .code-block-wrapper {
+    border: 1px solid #cccccc !important;
+    page-break-inside: avoid;
+  }
+
+  /* Links */
+  a {
+    color: #000000 !important;
+    text-decoration: underline !important;
+  }
+
+  a[href^="http"]:after {
+    content: " (" attr(href) ")";
+    font-size: 85%;
+    color: #555555;
+  }
+
+  /* Internal anchor links should not print href */
+  a[href^="#"]:after {
+    content: "";
+  }
+
+  /* Page breaks */
+  h1, h2, h3 {
+    page-break-after: avoid;
+    break-after: avoid;
+    color: #000000 !important;
+  }
+
+  .qa-card,
+  .exercise-box,
+  .callout,
+  table {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    border-color: #cccccc !important;
+  }
+
+  /* Ensure diagrams and tables are legible */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    border: 1px solid #cccccc !important;
+    padding: 6px 10px !important;
+  }
+}
+

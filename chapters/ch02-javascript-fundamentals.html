@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 2: JavaScript Fundamentals | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to JavaScript runtime fundamentals: memory stack vs heap, primitives vs references, type coercion tables, scope chain, hoisting, TDZ, closures, and ES Modules for technical interviews.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="2">
+
+  <!-- Header -->
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART I — Programming Foundations and JavaScript</div>
+          <h1 class="chapter-title">Chapter 2: JavaScript Fundamentals</h1>
+          <p class="chapter-lead">
+            The core language engine: V8 Call Stack vs Memory Heap, variable declaration semantics (var vs let vs const), type coercion tables, truthy and falsy values, lexical scope chains, closures, hoisting mechanics, the Temporal Dead Zone, and module systems.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Language Core</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand the V8 memory architecture: Call Stack vs Memory Heap allocation.</li>
+            <li>Master the differences between <code>var</code>, <code>let</code>, and <code>const</code> across scope, reassignment, and hoisting.</li>
+            <li>Differentiate the 7 primitive data types from reference types and trace reference mutation bugs.</li>
+            <li>Predict implicit type coercion across arithmetic (<code>+</code>, <code>-</code>) and comparison operators (<code>==</code> vs <code>===</code>).</li>
+            <li>Deconstruct the Temporal Dead Zone (TDZ) and explain how the JS engine initializes variables during compilation vs execution.</li>
+            <li>Understand lexical scope, the scope chain, and closures in depth.</li>
+            <li>Compare ES Modules (ESM) and CommonJS (CJS) in terms of loading, tree-shaking, and cyclical dependencies.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Memory Architecture: Primitives vs Reference Types</h2>
+        <p>
+          JavaScript engines (such as Google V8 in Chrome and Node.js) partition memory into two primary regions: the <strong>Call Stack</strong> and the <strong>Memory Heap</strong>.
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
+           CALL STACK                                      MEMORY HEAP
++-------------------------------+             +----------------------------------+
+| Frame: executeFunction()      |             |                                  |
+|                               |             |  Object 1: { name: 'Alice' }     |
+| age: 28 (Primitive value)     |             |  Address: @0x0041                |
+| userRef: @0x0041 (Pointer) ---+------------>|                                  |
+|                               |             |  Array 1: [10, 20, 30]           |
+| Frame: globalContext()        |             |  Address: @0x0088                |
+| appName: 'Portal'             |             |                                  |
++-------------------------------+             +----------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 2.1: Call Stack (Fixed Primitives & Pointers) vs. Memory Heap (Dynamic Objects)</div>
+        </div>
+
+        <h3>The 7 Primitive Types</h3>
+        <p>
+          JavaScript has 7 primitive types: <code>string</code>, <code>number</code>, <code>boolean</code>, <code>null</code>, <code>undefined</code>, <code>symbol</code>, and <code>bigint</code>.
+        </p>
+        <ul>
+          <li><strong>Stored by value:</strong> Primitive variables store the actual binary representation directly on the Call Stack.</li>
+          <li><strong>Immutable:</strong> You cannot mutate a primitive value. When you modify a string (e.g., <code>str.toUpperCase()</code>), JavaScript does not alter the original string in memory; it allocates an entirely new string.</li>
+          <li><strong>Passed by copy:</strong> Assigning or passing a primitive creates an independent copy of that value in a new stack frame.</li>
+        </ul>
+
+        <h3>Reference Types (Objects, Arrays, Functions)</h3>
+        <p>
+          Objects, arrays, dates, maps, sets, and functions are dynamic in size. They cannot be stored in fixed-size stack frames; they are allocated dynamically in the <strong>Memory Heap</strong>.
+        </p>
+        <p>
+          The variable in the Call Stack holds only a <strong>memory reference (pointer address)</strong> pointing to where the object lives in the heap.
+        </p>
+
+        <pre><code class="language-javascript">// Example: Primitive vs Reference Copy Behavior
+let scoreA = 100;
+let scoreB = scoreA; // Copies literal value 100
+scoreB = 95;
+
+console.log(scoreA); // Output: 100 (scoreA is unaffected)
+console.log(scoreB); // Output: 95
+
+// Reference behavior
+let userA = { name: "Alice", role: "admin" };
+let userB = userA;   // Copies the memory pointer address, NOT the object!
+
+userB.name = "Bob";  // Mutates the shared object in the heap
+
+console.log(userA.name); // Output: "Bob" (userA was mutated through userB!)
+console.log(userA === userB); // Output: true (Both point to identical heap address)</code></pre>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ Common Production Trap: Accidental Object Mutation</div>
+          <p>
+            In React or Redux applications, passing an object or array to a function that mutates a property directly will silently bypass React's shallow equality state checks (<code>prevProps !== nextProps</code>), preventing components from re-rendering! Always use shallow copying (<code>{ ...userA }</code>) or deep copying (<code>structuredClone()</code>) when updating state.
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <h2>2. Variable Declarations: var, let, and const</h2>
+        <p>
+          Prior to ES6 (2015), JavaScript only supported <code>var</code>. Modern production code strictly uses <code>const</code> by default, and <code>let</code> only when reassignment is explicitly required.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th><code>var</code></th>
+                <th><code>let</code></th>
+                <th><code>const</code></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Scope</strong></td>
+                <td>Function scope (or global). Ignores block boundaries (<code>if</code>, <code>for</code>).</td>
+                <td>Block scope (enclosed by <code>{ ... }</code>).</td>
+                <td>Block scope (enclosed by <code>{ ... }</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Hoisting Behavior</strong></td>
+                <td>Hoisted and initialized to <code>undefined</code>. Accessible before line of declaration.</td>
+                <td>Hoisted, but <strong>uninitialized</strong>. In the Temporal Dead Zone (TDZ).</td>
+                <td>Hoisted, but <strong>uninitialized</strong>. In the Temporal Dead Zone (TDZ).</td>
+              </tr>
+              <tr>
+                <td><strong>Reassignment</strong></td>
+                <td>Allowed.</td>
+                <td>Allowed.</td>
+                <td><strong>Forbidden</strong> (throws <code>TypeError</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Redeclaration</strong></td>
+                <td>Allowed in same scope (silently overwrites).</td>
+                <td><strong>Forbidden</strong> (throws <code>SyntaxError</code>).</td>
+                <td><strong>Forbidden</strong> (throws <code>SyntaxError</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>Global Object Property</strong></td>
+                <td>Attaches to <code>window</code> (in browser) if declared in global scope.</td>
+                <td>Does not attach to <code>window</code>.</td>
+                <td>Does not attach to <code>window</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>The Classic Loop Closure Problem</h3>
+        <p>
+          A standard interview question asks what the following code prints:
+        </p>
+
+        <pre><code class="language-javascript">// The var dilemma
+for (var i = 0; i < 3; i++) {
+  setTimeout(() => console.log('var i:', i), 100);
+}
+// Output after 100ms:
+// var i: 3
+// var i: 3
+// var i: 3
+
+// The let solution
+for (let j = 0; j < 3; j++) {
+  setTimeout(() => console.log('let j:', j), 100);
+}
+// Output after 100ms:
+// let j: 0
+// let j: 1
+// let j: 2</code></pre>
+
+        <p>
+          <strong>Why this happens:</strong> Because <code>var</code> is function-scoped, there is only a <em>single binding</em> of <code>i</code> shared across all iterations of the loop. When the asynchronous <code>setTimeout</code> callbacks execute, the loop has already completed and <code>i</code> equals 3. In contrast, <code>let</code> creates a <em>fresh lexical environment binding for each iteration</em> of the loop, preserving the value of <code>j</code> in each closure!
+        </p>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <h2>3. Hoisting and the Temporal Dead Zone (TDZ)</h2>
+        <p>
+          During the Compilation Phase (before any code executes), the JavaScript engine scans the code, identifies all variable and function declarations, and sets up their memory bindings in the Environment Record. This process is conceptualized as <strong>Hoisting</strong>.
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++--------------------------------------------------------------------------+
+| Lexical Scope Start                                                      |
+|   |                                                                      |
+|   |  <--- TEMPORAL DEAD ZONE (TDZ) FOR 'age' BEGINS                      |
+|   |  (Variable exists in memory binding, but accessing throws            |
+|   |   ReferenceError: Cannot access 'age' before initialization)         |
+|   |                                                                      |
+|   v                                                                      |
+| let age = 25; <--- TDZ ENDS (Variable initialized with value 25)        |
+|   |                                                                      |
+|   v                                                                      |
+| console.log(age); // Safe to read! Logs 25                              |
++--------------------------------------------------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 2.2: The Temporal Dead Zone Lifecycle for Block-Scoped Variables</div>
+        </div>
+
+        <pre><code class="language-javascript">// Hoisting with var vs let:
+console.log(userVar); // Output: undefined (Hoisted & initialized to undefined)
+var userVar = "Alice";
+
+console.log(userLet); // Throws ReferenceError: Cannot access 'userLet' before initialization!
+let userLet = "Bob";</code></pre>
+
+        <h3>Function Declarations vs Function Expressions</h3>
+        <p>
+          Function declarations are hoisted <em>with their entire function body</em>. Function expressions assigned to variables follow variable hoisting rules.
+        </p>
+
+        <pre><code class="language-javascript">// Function Declaration (Hoisted entirely - CAN be invoked before declaration)
+greet(); // Output: "Hello from Declaration!"
+
+function greet() {
+  console.log("Hello from Declaration!");
+}
+
+// Function Expression (Follows variable rules - CANNOT be invoked before declaration)
+sayBye(); // Throws TypeError: sayBye is not a function (if var) or ReferenceError (if let/const)
+
+var sayBye = function() {
+  console.log("Goodbye!");
+};</code></pre>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <h2>4. Type Coercion & Truthy / Falsy Values</h2>
+        <p>
+          JavaScript is a dynamically and weakly typed language. When operators encounter operands of mismatched types, JavaScript implicitly converts them using internal ECMAScript algorithms (<code>ToPrimitive</code>, <code>ToNumber</code>, <code>ToString</code>, <code>ToBoolean</code>).
+        </p>
+
+        <h3>The 8 Falsy Values in JavaScript</h3>
+        <p>
+          Every value in JavaScript is truthy <em>except</em> for these 8 values, which evaluate to <code>false</code> in boolean contexts:
+        </p>
+        <ol>
+          <li><code>false</code></li>
+          <li><code>0</code> (and <code>-0</code>, <code>0n</code> BigInt)</li>
+          <li><code>""</code> (empty string)</li>
+          <li><code>null</code></li>
+          <li><code>undefined</code></li>
+          <li><code>NaN</code> (Not a Number)</li>
+          <li><code>document.all</code> (legacy browser artifact)</li>
+        </ol>
+
+        <div class="callout callout-important">
+          <div class="callout-title">⚠️ Common Interview Gotcha: Empty Objects and Arrays are Truthy!</div>
+          <p>
+            <code>Boolean([]) === true</code> and <code>Boolean({}) === true</code>!<br>
+            Even though an array is empty, it is an Object reference, and all objects in JavaScript are truthy. Checking <code>if (items)</code> does not test if an array has items; always check <code>if (items.length &gt; 0)</code>.
+          </p>
+        </div>
+
+        <h3>The Addition Operator (<code>+</code>) vs Subtraction (<code>-</code>)</h3>
+        <p>
+          The <code>+</code> operator serves a dual purpose: numerical addition and string concatenation. If <em>either</em> operand is a string (or converts to a string), JavaScript chooses <strong>string concatenation</strong>.
+        </p>
+        <p>
+          In contrast, <code>-</code>, <code>*</code>, <code>/</code>, and <code>%</code> exist only for mathematical operations, forcing both operands to convert to <strong>numbers</strong>.
+        </p>
+
+        <pre><code class="language-javascript">console.log(1 + "2");      // "12"  (Number 1 converts to "1")
+console.log("6" - 2);      // 4     (String "6" converts to number 6)
+console.log("6" * "3");    // 18    (Both convert to numbers)
+console.log("foo" - 2);    // NaN   ("foo" cannot be parsed to a valid number)
+console.log(true + 1);     // 2     (true converts to 1)
+console.log(false + null); // 0     (false -> 0, null -> 0)
+console.log([] + []);      // ""    (Both convert to empty strings)
+console.log([] + {});      // "[object Object]"
+console.log(true + []);    // "true"</code></pre>
+
+        <h3>Strict Equality (<code>===</code>) vs Loose Equality (<code>==</code>)</h3>
+        <ul>
+          <li><strong>Strict Equality (<code>===</code>):</strong> Checks both value and type without coercion. If types differ, returns <code>false</code> immediately.</li>
+          <li><strong>Loose Equality (<code>==</code>):</strong> Performs type coercion according to complex ECMAScript rules before comparing.</li>
+        </ul>
+
+        <div class="callout callout-danger">
+          <div class="callout-title">🚨 The Golden Rule for Modern JavaScript</div>
+          <p>
+            Always use <code>===</code> and <code>!==</code>. The only accepted standard exception is checking for nullish values: <code>if (val == null)</code>, which concisely tests if <code>val</code> is either <code>null</code> or <code>undefined</code>.
+          </p>
+        </div>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <h2>5. Lexical Scope and Closures</h2>
+        <p>
+          A <strong>Closure</strong> is a function bundled together with references to its surrounding state (its <strong>Lexical Environment</strong>). In JavaScript, closures give an inner function access to an outer function's scope even after the outer function has returned and finished executing!
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++--------------------------------------------------------------+
+| createCounter() Execution Context                            |
+|                                                              |
+|   let count = 0;  <-- Preserved in Closure Scope!           |
+|                                                              |
+|   +------------------------------------------------------+   |
+|   | Returned Inner Function: increment()                 |   |
+|   |                                                      |   |
+|   |   count++;                                           |   |
+|   |   return count;                                      |   |
+|   +------------------------------------------------------+   |
++--------------------------------------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 2.3: Closure Retaining Outer Scope in Memory Heap</div>
+        </div>
+
+        <pre><code class="language-javascript">function createCounter(initialValue = 0) {
+  let count = initialValue; // Private variable encapsulated by closure
+
+  return {
+    increment() {
+      count++;
+      return count;
+    },
+    decrement() {
+      count--;
+      return count;
+    },
+    getCount() {
+      return count;
+    }
+  };
+}
+
+const counterA = createCounter(10);
+console.log(counterA.increment()); // 11
+console.log(counterA.increment()); // 12
+console.log(counterA.getCount());  // 12
+// Direct access is impossible:
+console.log(counterA.count);       // undefined (Enforces true data encapsulation!)</code></pre>
+
+        <h3>Real-World Applications of Closures</h3>
+        <ol>
+          <li><strong>Data Privacy & Encapsulation:</strong> Emulating private instance variables in modules.</li>
+          <li><strong>Factory Functions:</strong> Generating custom validators or API client instances.</li>
+          <li><strong>Functional Programming:</strong> Currying and partial application (e.g., <code>const multiplyByTwo = multiply(2)</code>).</li>
+          <li><strong>Event Handlers & Async Timers:</strong> Preserving state when UI callbacks execute later in the event loop.</li>
+        </ol>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <h2>6. Modern JavaScript Syntax: Destructuring, Spread, Rest, Nullish Coalescing</h2>
+
+        <h3>Destructuring, Spread, and Rest</h3>
+        <pre><code class="language-javascript">// 1. Object Destructuring with Default Values and Renaming
+const user = { id: 101, username: "dev_alex", profile: { role: "admin" } };
+const { username: handle, profile: { role }, isVerified = false } = user;
+
+console.log(handle);     // "dev_alex" (Renamed)
+console.log(role);       // "admin"    (Deep nested extraction)
+console.log(isVerified); // false      (Default fallback)
+
+// 2. Rest Operator (...) in Function Signatures
+function logEvents(category, ...events) {
+  // 'events' gathers remaining arguments into a true Array
+  console.log(`[${category}] Processing ${events.length} events:`, events);
+}
+logEvents("AUTH", "login", "refresh_token", "logout");
+
+// 3. Spread Operator (...) for Immutability
+const originalConfig = { host: "localhost", port: 3000, debug: true };
+const productionConfig = {
+  ...originalConfig,
+  host: "api.production.com", // Overwrites host
+  debug: false                // Overwrites debug
+};</code></pre>
+
+        <h3>Optional Chaining (<code>?.</code>) and Nullish Coalescing (<code>??</code>)</h3>
+        <p>
+          Before ES2020, accessing deep nested properties risked runtime crashes (<code>TypeError: Cannot read properties of undefined</code>). The Logical OR operator (<code>||</code>) was used for defaults, but caused bugs when dealing with valid falsy values like <code>0</code> or <code>""</code>.
+        </p>
+
+        <pre><code class="language-javascript">const serverResponse = {
+  user: {
+    name: "Sam",
+    preferences: {
+      itemsPerPage: 0, // Valid user configuration: 0 items!
+      theme: ""        // Empty string
+    }
+  }
+};
+
+// Optional Chaining: Safely short-circuits to undefined if parent is null/undefined
+const nonExistent = serverResponse.user?.address?.city; // undefined (No TypeError!)
+
+// Nullish Coalescing (??) checks STRICTLY for null or undefined:
+const limitOR = serverResponse.user.preferences.itemsPerPage || 25;
+console.log(limitOR); // 25 (BUG! 0 is falsy, so || wrongly discarded user's 0)
+
+const limitNC = serverResponse.user.preferences.itemsPerPage ?? 25;
+console.log(limitNC); // 0  (CORRECT! 0 is not null or undefined, so it is preserved)</code></pre>
+
+        <hr>
+
+        <!-- Section 7 -->
+        <h2>7. ES Modules (ESM) versus CommonJS (CJS)</h2>
+        <p>
+          Node.js historically used <strong>CommonJS (CJS)</strong> with <code>require()</code> and <code>module.exports</code>. Modern frontend frameworks and Node.js (v14+) standardly use <strong>ES Modules (ESM)</strong> with <code>import</code> and <code>export</code>.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>CommonJS (CJS)</th>
+                <th>ES Modules (ESM)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Syntax</strong></td>
+                <td><code>const fs = require('fs')</code> / <code>module.exports = ...</code></td>
+                <td><code>import fs from 'fs'</code> / <code>export default ...</code></td>
+              </tr>
+              <tr>
+                <td><strong>Loading Mechanism</strong></td>
+                <td>Synchronous, executed dynamically at runtime.</td>
+                <td>Asynchronous, static parsing before execution.</td>
+              </tr>
+              <tr>
+                <td><strong>Tree-Shaking (Dead Code Elimination)</strong></td>
+                <td>Impossible or very difficult due to dynamic imports.</td>
+                <td>Fully supported by bundlers (Vite, Rollup, Webpack) due to static analysis.</td>
+              </tr>
+              <tr>
+                <td><strong>Top-Level Await</strong></td>
+                <td>Not supported natively in CJS files.</td>
+                <td>Supported natively (e.g., <code>await db.connect()</code> at file root).</td>
+              </tr>
+              <tr>
+                <td><strong>File Extension / Config</strong></td>
+                <td>Default in Node.js (<code>.js</code> or <code>.cjs</code>).</td>
+                <td><code>.mjs</code> or <code>"type": "module"</code> in <code>package.json</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <hr>
+
+        <!-- Section 8 -->
+        <h2>8. Code Exercises & Debugging Puzzles</h2>
+
+        <div class="exercise-box">
+          <div class="exercise-header">
+            <span>Puzzle 2.1: Predict the Exact Console Output</span>
+            <span class="meta-pill">Code Tracing</span>
+          </div>
+          <div class="exercise-body">
+            <p>Study this tricky snippet involving hoisting, TDZ, and closures. What does it print?</p>
+            <pre><code class="language-javascript">var a = 1;
+
+function test() {
+  console.log(a);
+  var a = 2;
+  console.log(a);
+}
+
+test();
+console.log(a);</code></pre>
+
+            <div class="exercise-solution">
+              <details>
+                <summary>Click to view solution & step-by-step trace</summary>
+                <div style="padding-top: 0.75rem;">
+                  <p><strong>Output:</strong></p>
+                  <pre><code class="language-javascript">undefined
+2
+1</code></pre>
+                  <p><strong>Step-by-Step Reason:</strong></p>
+                  <ol>
+                    <li>Inside <code>test()</code>, the local variable declaration <code>var a = 2;</code> is hoisted to the top of the function's scope.</li>
+                    <li>This local <code>a</code> shadows the outer global <code>a</code>.</li>
+                    <li>Because it is hoisted as <code>var</code>, it is initialized to <code>undefined</code>. Thus, the first <code>console.log(a)</code> prints <code>undefined</code>!</li>
+                    <li>Then <code>a = 2</code> executes, so the second log prints <code>2</code>.</li>
+                    <li>Outside the function, the global <code>a</code> remains untouched, printing <code>1</code>.</li>
+                  </ol>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 9: Interview Questions and Answers -->
+        <section class="interview-section">
+          <h2>Interview Questions and Answers</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            20 high-frequency interview questions covering JavaScript memory models, type coercion, scoping, closures, and modern syntax.
+          </p>
+
+          <div class="qa-toolbar">
+            <div class="qa-filter-btns">
+              <button class="qa-filter-btn active" data-filter="all">All (20)</button>
+              <button class="qa-filter-btn" data-filter="beginner">Beginner</button>
+              <button class="qa-filter-btn" data-filter="intermediate">Intermediate</button>
+              <button class="qa-filter-btn" data-filter="advanced">Advanced</button>
+              <button class="qa-filter-btn" data-filter="scenario">Scenario</button>
+            </div>
+            <button class="qa-toggle-all" type="button">Expand All Answers</button>
+          </div>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What are the primary differences between `var`, `let`, and `const`?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`var` is function-scoped, can be redeclared, and is hoisted with an initial value of undefined. In contrast, `let` and `const` are block-scoped, cannot be redeclared in the same scope, and reside in the Temporal Dead Zone until their line of declaration executes. `const` prevents variable reassignment, whereas `let` allows it. In production, we write `const` by default and `let` only when reassignment is strictly required."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">What is a Closure, and why is it useful in JavaScript?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A closure is the combination of a function and the lexical environment within which that function was declared. Closures allow an inner function to access variables from an outer enclosing function even after the outer function has returned. They are fundamental in JavaScript for data encapsulation, private variables, currying, and maintaining state across asynchronous callbacks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">Explain the Temporal Dead Zone (TDZ). What error does accessing a TDZ variable produce?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The Temporal Dead Zone is the period between entering a lexical scope and the actual execution of a `let` or `const` variable's declaration statement. Although the variable is hoisted during compilation and registered in memory, it remains uninitialized. Attempting to read or write to it while in the TDZ throws a `ReferenceError: Cannot access variable before initialization`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">What is the difference between shallow copy and deep copy? How does `structuredClone()` work?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A shallow copy (using Object.assign or spread syntax {...obj}) duplicates only top-level properties; nested objects still share identical memory references. A deep copy recursively duplicates every nested object, ensuring complete memory isolation. The native `structuredClone()` API performs true deep copying and handles circular references, Dates, and Sets, unlike JSON.parse(JSON.stringify()), which destroys Dates, Maps, and fails on circular references."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What does `typeof null` return, and why? How do you reliably check for null?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`typeof null` returns 'object'. This is an infamous historical bug from JavaScript's first 1995 implementation, where values were represented using type tags, and objects were tagged with 000. Because null was represented as a NULL pointer (all zeroes), typeof mistakenly identified it as an object. To reliably test if a value is null, use strict equality: `val === null`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">What is the difference between `null` and `undefined`?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`undefined` represents the unintentional absence of a value—a variable that has been declared but not assigned, a missing function argument, or an unassigned object property. `null` represents the intentional assignment of an empty or nonexistent value. In loose equality, `null == undefined` is true, but in strict equality, `null === undefined` is false."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">Explain the difference between `==` and `===`. Provide an example where `==` causes unexpected behavior.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`===` performs strict equality without coercion: if types differ, it returns false. `==` coerces types before comparison. A notorious bug example is `0 == ''` and `0 == false`, which both evaluate to true. Similarly, `[] == false` is true because the empty array coerces to an empty string `""`, which then coerces to number 0. Because of these unintuitive coercion algorithms, we always use strict equality."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">What is the difference between `??` (Nullish Coalescing) and `||` (Logical OR)?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`||` returns the right-hand operand if the left-hand operand is *any* falsy value (including 0, false, empty string, NaN). `??` returns the right-hand operand *only* if the left-hand operand is strictly `null` or `undefined`. If 0 or false are legitimate values in your domain logic (such as a zero retry count or a disabled flag), using `||` will incorrectly overwrite them with default values."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">Is JavaScript pass-by-value or pass-by-reference? Explain precisely.</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "JavaScript is strictly pass-by-value at all times. When you pass a primitive, a copy of the literal value is passed. When you pass an object, a copy of the *reference pointer address* is passed (sometimes called call-by-sharing). Because the pointer value is copied, you can mutate the object's properties in the shared heap, but reassigning the parameter variable itself to a new object does NOT affect the caller's original variable."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">function mutate(obj) {
+  obj.name = "Mutated"; // Affects caller (mutates heap object)
+  obj = { name: "Reassigned" }; // Does NOT affect caller (reassigned local pointer)
+}
+const person = { name: "Original" };
+mutate(person);
+console.log(person.name); // Output: "Mutated"</code></pre>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">What does `const user = { name: 'Alice' }` prevent, and what does it NOT prevent?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`const` creates an immutable variable binding in the Call Stack. It prevents reassigning the variable to a different memory address (e.g., `user = {}` throws TypeError). However, it does NOT make the object in the heap immutable; you can freely mutate, add, or delete properties (`user.name = 'Bob'`). To make an object's properties truly immutable, you must use `Object.freeze()`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the difference between regular functions and arrow functions regarding `this` and arguments?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Regular functions determine their `this` dynamically at invocation time based on how the function is called. Arrow functions do not have their own `this` binding; they inherit `this` lexically from their enclosing parent scope. Furthermore, arrow functions lack their own `arguments` object, cannot be used as constructor functions with `new`, and do not have a `prototype` property."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">How does JavaScript's garbage collector decide when to free memory? What causes memory leaks?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Modern V8 engines use the Mark-and-Sweep algorithm based on Reachability. The engine starts at designated Root nodes (the global object, active call stack frames) and traverses all reference paths. Any heap memory unreachable from the roots is marked as dead and reclaimed during sweep cycles. Memory leaks occur when objects that are no longer needed remain reachable—such as uncleaned setInterval timers, uncleared DOM event listeners holding component closures, and unbounded global caches."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">What is `NaN`, how does it behave in comparisons, and how do you check for it?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`NaN` stands for Not-a-Number, representing the result of an invalid arithmetic operation (like `0 / 0` or `'text' * 2`). Its typeof is 'number'. Uniquely in JavaScript, `NaN` is the only value that is never equal to itself: `NaN === NaN` is false! To accurately check for it, use `Number.isNaN(val)`. Do not use global `isNaN()` because it coerces non-numeric strings to NaN before testing."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What are Symbol primitives, and why are they used?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A Symbol is a unique, immutable primitive data type. Every `Symbol()` call generates an entirely distinct identifier, even if created with identical descriptions. They are primarily used as unique object property keys to avoid property collisions in shared libraries, and for well-known engine protocols like `Symbol.iterator` to make objects iterable."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">Scenario: You are debugging a memory leak in a Node.js Express server. What tool and methodology would you use to pinpoint the leak?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I start Node.js with the `--inspect` flag and connect Chrome DevTools. In the Memory tab, I take a baseline Heap Snapshot. Next, I run an automated load test generating several hundred requests. I then take a second and third Heap Snapshot and use the 'Comparison' view in DevTools to identify objects whose allocation count is steadily increasing without being garbage collected. I inspect the Retaining Tree to see which root reference (e.g., an array cache or lingering event listener) is preventing collection."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What is the difference between ES Modules (ESM) and CommonJS (CJS)?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "CommonJS (require / module.exports) is synchronous and evaluated at runtime, making static optimization and tree-shaking impossible. ES Modules (import / export) are statically analyzable at compile time before execution, which enables modern bundlers to eliminate unused code through tree-shaking. ESM also natively supports Top-Level Await and works identically across modern browsers and Node.js."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is Currying in JavaScript, and what real-world problem does it solve?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Currying is a functional programming technique where a function that takes multiple arguments `f(a, b, c)` is transformed into a sequence of functions that each take a single argument: `f(a)(b)(c)`. It is powered by closures. In real-world engineering, currying enables partial application—creating reusable pre-configured specialized functions, such as customized loggers or API fetch wrappers with preset auth headers."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What is the difference between the Rest operator and the Spread operator?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "They use the same syntax (`...`) but serve opposite purposes. The Rest operator condenses multiple separate elements into a single array, typically used in function parameters (`function(...args)`) or destructuring. The Spread operator unpacks elements of an array or properties of an object into individual elements, commonly used for immutable copying or merging objects."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">Explain what `Object.freeze()` vs `Object.seal()` do. Are they recursive?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`Object.seal()` prevents adding or deleting properties, but existing writable properties can still be modified. `Object.freeze()` is more restrictive: it seals the object AND marks all existing properties as read-only, preventing any modifications. Crucially, neither is recursive (they are shallow). Mutating a nested object inside a frozen object will still succeed unless you implement a recursive `deepFreeze()`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">Scenario: You have a search input that queries an API on every keystroke, causing server overload. How do you implement a debounce function from scratch using closures?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I create a higher-order function that captures a timer ID in a closure. Every time the returned wrapped function is invoked, it cancels any existing pending timer using clearTimeout and schedules a new setTimeout. The original target function only executes once the user stops triggering calls for the specified delay period."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">function debounce(fn, delay = 300) {
+  let timerId = null; // Captured in closure
+
+  return function(...args) {
+    if (timerId) clearTimeout(timerId);
+
+    timerId = setTimeout(() => {
+      fn.apply(this, args);
+      timerId = null;
+    }, delay);
+  };
+}
+
+// Usage:
+const searchAPI = query => console.log('Searching API for:', query);
+const debouncedSearch = debounce(searchAPI, 400);</code></pre>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+

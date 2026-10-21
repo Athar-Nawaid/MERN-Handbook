@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 16: React Hooks and State Management | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to React Hooks and State Management: useState, useEffect cleanup, useRef, useMemo, useCallback, useContext re-render mitigation, useReducer, stale closures, and custom hooks.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="16">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART III — React and Redux Toolkit</div>
+          <h1 class="chapter-title">Chapter 16: React Hooks and State Management</h1>
+          <p class="chapter-lead">
+            Deep dive into React's built-in hooks: asynchronous state batching, useEffect synchronization vs lifecycles, referential equality with useMemo and useCallback, stale closure debugging, useContext optimization patterns, useReducer state machines, and writing robust custom hooks.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Hooks Mechanics</span>
+              <span class="meta-pill">Stale Closures</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Understand the <code>useState</code> snapshot model and React 18 <strong>Automatic Batching</strong> across all asynchronous tasks.</li>
+            <li>Master the <code>useEffect</code> lifecycle: synchronization mental model, cleanup invocation timing, and <code>React.StrictMode</code> double-mounting.</li>
+            <li>Use <code>useRef</code> for persistent mutable references and DOM access without triggering re-renders.</li>
+            <li>Apply <code>useMemo</code> and <code>useCallback</code> strategically to maintain referential identity without falling into premature optimization traps.</li>
+            <li>Debug and resolve <strong>Stale Closures</strong> in timers, event listeners, and asynchronous callbacks.</li>
+            <li>Prevent Context API "re-render cascades" by splitting state and dispatch contexts.</li>
+            <li>Architect complex state with <code>useReducer</code> using the Finite State Machine (FSM) pattern.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. useState: Snapshots, Functional Updates, and Lazy Initialization</h2>
+        <p>
+          State in React behaves like a <strong>snapshot</strong> of a single render. When you call <code>setCount(count + 1)</code>, you are not mutating a variable in place; you are scheduling a new render with a new state snapshot.
+        </p>
+
+        <h3>1.1 Direct Value vs Functional Updater Form</h3>
+        <p>
+          Because state is a snapshot, calling a setter multiple times in the same tick using the direct value reads the <em>same</em> snapshot value:
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">function CounterBug() {
+  const [count, setCount] = useState(0);
+
+  const handleClick = () => {
+    // In this render snapshot, count is 0
+    setCount(count + 1); // setCount(0 + 1)
+    setCount(count + 1); // setCount(0 + 1)
+    setCount(count + 1); // setCount(0 + 1)
+    // Result after render: count is 1, NOT 3!
+  };
+
+  return &lt;button onClick={handleClick}&gt;Count: {count}&lt;/button&gt;;
+}
+
+function CounterFixed() {
+  const [count, setCount] = useState(0);
+
+  const handleClick = () => {
+    // Functional updater receives the pending state from the queue:
+    setCount((prev) => prev + 1); // 0 + 1 = 1
+    setCount((prev) => prev + 1); // 1 + 1 = 2
+    setCount((prev) => prev + 1); // 2 + 1 = 3
+    // Result after render: count is 3!
+  };
+
+  return &lt;button onClick={handleClick}&gt;Count: {count}&lt;/button&gt;;
+}</code></pre>
+        </div>
+
+        <h3>1.2 Lazy State Initialization</h3>
+        <p>
+          If your initial state requires an expensive computation (e.g. reading from <code>localStorage</code> or parsing a large JSON string), passing the expression directly executes that computation on <em>every single render</em>, even though React only uses it during the initial mount!
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// SLOW: JSON.parse runs on EVERY re-render, wasting CPU cycles
+const [user, setUser] = useState(JSON.parse(localStorage.getItem("user_profile")));
+
+// FAST: Lazy Initializer function runs ONCE on initial mount only
+const [user, setUser] = useState(() => {
+  const saved = localStorage.getItem("user_profile");
+  return saved ? JSON.parse(saved) : { name: "Guest", role: "viewer" };
+});</code></pre>
+        </div>
+
+        <!-- Section 2 -->
+        <h2>2. Automatic Batching (React 18 vs React 17)</h2>
+        <p>
+          <strong>Batching</strong> is React's mechanism of grouping multiple state updates into a single re-render to avoid unnecessary repaints.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Execution Context</th>
+                <th>React 17 Batching Behavior</th>
+                <th>React 18+ Automatic Batching</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>React Event Handlers</strong> (e.g. <code>onClick</code>)</td>
+                <td>Batched into 1 render.</td>
+                <td>Batched into 1 render.</td>
+              </tr>
+              <tr>
+                <td><strong>Asynchronous Promises</strong> (e.g. <code>fetch().then()</code>)</td>
+                <td><strong>Unbatched!</strong> Each state update triggered a separate immediate re-render!</td>
+                <td><strong>Automatically Batched!</strong> Multiple updates produce 1 render.</td>
+              </tr>
+              <tr>
+                <td><strong>Native Timers</strong> (e.g. <code>setTimeout</code>)</td>
+                <td><strong>Unbatched!</strong> Triggered multiple renders.</td>
+                <td><strong>Automatically Batched!</strong> Produces 1 single render.</td>
+              </tr>
+              <tr>
+                <td><strong>Bypassing Batching</strong></td>
+                <td>Not applicable (already unbatched).</td>
+                <td>Use <code>flushSync(() => { setState(...) })</code> if synchronous DOM read is required.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Section 3 -->
+        <h2>3. useEffect: Synchronization, Cleanups, and StrictMode</h2>
+        <p>
+          In class components, developers thought in terms of lifecycles: <em>"When the component mounts, do X; when it unmounts, do Y."</em>
+        </p>
+        <p>
+          In functional React with Hooks, the mental model is <strong>Synchronization</strong>: <em>"Synchronize the component with an external system (DOM, network, WebSockets, timers) based on state and props."</em>
+        </p>
+
+        <div class="diagram-box">
+          <div class="diagram-title">Figure 16.1: The useEffect Lifecycle & Cleanup Timing</div>
+          <pre class="diagram-content">
+[ Initial Mount: Render 1 ]
+   1. Component renders UI
+   2. DOM painted on screen
+   3. useEffect setup function runs (Subscribes to Chat Room A)
+
+========================================================================
+
+[ Props Change: roomId changes from 'Room A' to 'Room B' -> Render 2 ]
+   1. Component re-renders with roomId = 'Room B'
+   2. DOM updated and painted
+   3. PREVIOUS Cleanup runs! (Unsubscribes from Chat Room A)
+   4. NEW setup function runs! (Subscribes to Chat Room B)
+
+========================================================================
+
+[ Component Unmounts ]
+   1. Final Cleanup function runs! (Unsubscribes from Chat Room B)
+          </pre>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { useState, useEffect } from "react";
+
+export function ChatConnection({ roomId }) {
+  const [messages, setMessages] = useState([]);
+
+  useEffect(() => {
+    let isCancelled = false; // Prevents race condition if roomId changes fast
+
+    console.log(`[Effect] Connecting to room ${roomId}...`);
+    const socket = new WebSocket(`wss://chat.example.com/rooms/${roomId}`);
+
+    socket.onmessage = (event) => {
+      if (!isCancelled) {
+        const newMsg = JSON.parse(event.data);
+        setMessages((prev) => [...prev, newMsg]);
+      }
+    };
+
+    // CLEANUP FUNCTION: Runs before the effect re-executes AND on unmount
+    return () => {
+      console.log(`[Cleanup] Disconnecting from room ${roomId}...`);
+      isCancelled = true;
+      socket.close();
+    };
+  }, [roomId]); // Dependency array: only re-run when roomId changes
+
+  return &lt;div&gt;Connected to Room {roomId}. Messages: {messages.length}&lt;/div&gt;;
+}</code></pre>
+        </div>
+
+        <div class="callout callout-note">
+          <div class="callout-title">⚠️ Why does useEffect run twice on mount in React 18?</div>
+          <p>
+            In React 18 development mode with <code>&lt;React.StrictMode&gt;</code>, React intentionally mounts the component, unmounts it immediately (running your cleanup function), and mounts it again:
+          </p>
+          <p>
+            <code>Mount \(\to\) Cleanup \(\to\) Mount</code>
+          </p>
+          <p>
+            This intentional double-mount stresses your effects to ensure you implemented a proper <strong>cleanup function</strong>. If your effect leaks event listeners, leaves open socket connections, or fails to cancel fetch requests, the double-mount immediately exposes the bug during local development. In production builds, effects run only once on mount.
+          </p>
+        </div>
+
+        <!-- Section 4 -->
+        <h2>4. useRef: Persistent References without Re-renders</h2>
+        <p>
+          <code>useRef(initialValue)</code> returns a plain JavaScript object with a mutable <code>.current</code> property: <code>{ current: initialValue }</code>.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Use Case</th>
+                <th>Why State Fails</th>
+                <th>Why useRef Succeeds</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Direct DOM Access</strong> (focus, scroll position, measurement)</td>
+                <td>State has no reference to actual browser DOM nodes.</td>
+                <td>Attaching <code>ref={myRef}</code> to JSX sets <code>myRef.current</code> directly to the underlying DOM node upon mounting.</td>
+              </tr>
+              <tr>
+                <td><strong>Storing Timer IDs</strong> (e.g. <code>setInterval</code>)</td>
+                <td>Calling <code>setTimerId(...)</code> triggers a re-render every time a timer is set.</td>
+                <td>Mutating <code>timerRef.current = id</code> updates the reference <strong>without triggering any re-render</strong>.</td>
+              </tr>
+              <tr>
+                <td><strong>Tracking Previous Props / State</strong></td>
+                <td>State triggers an infinite loop if updated inside render.</td>
+                <td>Can store the previous value in <code>ref.current</code> inside an effect after render completes.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { useState, useRef, useEffect } from "react";
+
+// Pattern: Custom hook to track previous value across renders
+export function usePrevious(value) {
+  const ref = useRef();
+  
+  useEffect(() => {
+    ref.current = value; // Updates AFTER render phase completes
+  }, [value]);
+
+  return ref.current; // Returns previous value during render
+}
+
+export function Stopwatch() {
+  const [seconds, setSeconds] = useState(0);
+  const timerRef = useRef(null); // Holds timer ID without re-rendering
+
+  const start = () => {
+    if (timerRef.current !== null) return;
+    timerRef.current = setInterval(() => {
+      setSeconds((s) => s + 1);
+    }, 1000);
+  };
+
+  const stop = () => {
+    clearInterval(timerRef.current);
+    timerRef.current = null;
+  };
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => clearInterval(timerRef.current);
+  }, []);
+
+  return (
+    &lt;div&gt;
+      &lt;h2&gt;Elapsed: {seconds}s&lt;/h2&gt;
+      &lt;button onClick={start}&gt;Start&lt;/button&gt;
+      &lt;button onClick={stop}&gt;Stop&lt;/button&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+        </div>
+
+        <!-- Section 5 -->
+        <h2>5. useMemo and useCallback: Referential Identity and Performance</h2>
+        <p>
+          On every re-render of a component, all functions declared inside the component body are re-instantiated with new memory addresses:
+        </p>
+        <p>
+          \[
+          \text{fn}_{\text{render1}} \neq \text{fn}_{\text{render2}}
+          \]
+        </p>
+        <p>
+          Similarly, complex derived calculations (filtering, sorting 10,000 array items) run from scratch on every re-render, even when the underlying data did not change.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Hook</th>
+                <th>What It Returns</th>
+                <th>Primary Use Case</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>useMemo(fn, deps)</code></td>
+                <td>The <strong>memoized result value</strong> of executing <code>fn()</code>.</td>
+                <td>Caching expensive synchronous computations (sorting, math) or stabilizing object references passed to child components.</td>
+              </tr>
+              <tr>
+                <td><code>useCallback(fn, deps)</code></td>
+                <td>The <strong>memoized function reference</strong> itself.</td>
+                <td>Stabilizing callback function identities passed down to memoized child components (<code>React.memo</code>) to prevent re-renders.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import React, { useState, useMemo, useCallback } from "react";
+
+// Memoized child component: only re-renders if props change by shallow equality
+const ExpensiveChart = React.memo(function ExpensiveChart({ onSelectPoint, data }) {
+  console.log("[Child] Rendering ExpensiveChart...");
+  return (
+    &lt;div className="chart"&gt;
+      &lt;button onClick={() => onSelectPoint(data[0])}&gt;Select First Point&lt;/button&gt;
+    &lt;/div&gt;
+  );
+});
+
+export function Dashboard({ rawMetrics }) {
+  const [theme, setTheme] = useState("dark");
+
+  // 1. useMemo: Avoid recalculating expensive statistical aggregation on theme changes
+  const computedStats = useMemo(() => {
+    console.log("[Computation] Recalculating heavy metrics...");
+    return rawMetrics.map((m) => m * 1.5).sort((a, b) => b - a);
+  }, [rawMetrics]); // Only re-computes when rawMetrics changes
+
+  // 2. useCallback: Stabilize function reference across re-renders
+  const handleSelectPoint = useCallback((point) => {
+    console.log("Selected point:", point);
+  }, []); // Empty deps: function identity never changes!
+
+  return (
+    &lt;div className={theme}&gt;
+      &lt;button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}&gt;
+        Toggle Theme
+      &lt;/button&gt;
+      {/* ExpensiveChart will NOT re-render when theme toggles! */}
+      &lt;ExpensiveChart data={computedStats} onSelectPoint={handleSelectPoint} /&gt;
+    &lt;/div&gt;
+  );
+}</code></pre>
+        </div>
+
+        <div class="callout callout-warning">
+          <div class="callout-title">⚠️ The Cost of Premature Optimization with useMemo / useCallback</div>
+          <p>
+            Do not wrap every function and calculation in <code>useCallback</code> and <code>useMemo</code> by default! Each hook call incurs overhead:
+          </p>
+          <ol>
+            <li>Memory allocation for the dependency array.</li>
+            <li>Iterating over previous dependencies and shallow comparing every element.</li>
+            <li>Extra closure allocations in JavaScript V8 memory.</li>
+          </ol>
+          <p>
+            <strong>Rule of Thumb:</strong> Only use <code>useCallback</code> when the function is passed to a <code>React.memo</code>-wrapped child or listed in a <code>useEffect</code> dependency array. Only use <code>useMemo</code> for truly heavy calculations (&gt; 1ms execution time or &gt; 1,000 items) or to preserve referential equality for dependency arrays.
+          </p>
+        </div>
+
+        <!-- Section 6 -->
+        <h2>6. Stale Closures in Hooks: Diagnosis & Solution</h2>
+        <p>
+          A <strong>Stale Closure</strong> occurs when a callback or effect captures a snapshot of state from an earlier render and continues referencing that old snapshot even after state has changed.
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">// BUGGY: Classic Stale Closure in setInterval
+function StaleCounter() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      // In this closure, `count` was captured as `0` at mount time!
+      // On every tick, it calls setCount(0 + 1) = 1!
+      console.log("Tick with count:", count); // Always 0!
+      setCount(count + 1);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []); // Missing count in dependency array!
+
+  return &lt;h1&gt;Count: {count}&lt;/h1&gt;; // Stays at 1 forever!
+}
+
+// FIX 1: Functional updater (Eliminates the dependency entirely)
+function FixedCounterUpdater() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCount((prev) => prev + 1); // Reads fresh pending state
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []); // Safe! No dependency needed!
+
+  return &lt;h1&gt;Count: {count}&lt;/h1&gt;;
+}
+
+// FIX 2: useRef pattern when you need to read fresh state inside a callback
+function FixedCounterRef() {
+  const [count, setCount] = useState(0);
+  const countRef = useRef(count);
+
+  // Keep ref synchronized with latest state
+  useEffect(() => {
+    countRef.current = count;
+  }, [count]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      console.log("Fresh count:", countRef.current);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  return &lt;button onClick={() => setCount(count + 1)}&gt;Count: {count}&lt;/button&gt;;
+}</code></pre>
+        </div>
+
+        <!-- Section 7 -->
+        <h2>7. useContext and Mitigating Re-render Storms</h2>
+        <p>
+          <code>useContext</code> solves <strong>Prop Drilling</strong> (passing props through 10 intermediate components that don't need them). However, React Context comes with a severe architectural caveat:
+        </p>
+        <p>
+          <strong>Whenever the Context value changes, EVERY component that calls <code>useContext(MyContext)</code> will re-render, even if it only consumes a property that didn't change, and even if wrapped in <code>React.memo</code>!</strong>
+        </p>
+
+        <h3>7.1 The Solution: Context Splitting (State vs Dispatch)</h3>
+        <p>
+          By splitting state and dispatch into two separate Contexts, components that only trigger actions (like buttons) never re-render when state changes!
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { createContext, useContext, useReducer } from "react";
+
+// 1. Separate State Context and Dispatch Context
+const CartStateContext = createContext(null);
+const CartDispatchContext = createContext(null);
+
+function cartReducer(state, action) {
+  switch (action.type) {
+    case "ADD_ITEM":
+      return { ...state, items: [...state.items, action.payload] };
+    case "CLEAR":
+      return { ...state, items: [] };
+    default:
+      return state;
+  }
+}
+
+export function CartProvider({ children }) {
+  const [state, dispatch] = useReducer(cartReducer, { items: [] });
+
+  return (
+    &lt;CartStateContext.Provider value={state}&gt;
+      {/* Dispatch reference NEVER changes, so this context never triggers re-renders! */}
+      &lt;CartDispatchContext.Provider value={dispatch}&gt;
+        {children}
+      &lt;/CartDispatchContext.Provider&gt;
+    &lt;/CartStateContext.Provider&gt;
+  );
+}
+
+// Custom consumption hooks with guard clauses
+export function useCartState() {
+  const context = useContext(CartStateContext);
+  if (!context) throw new Error("useCartState must be used within CartProvider");
+  return context;
+}
+
+export function useCartDispatch() {
+  const context = useContext(CartDispatchContext);
+  if (!context) throw new Error("useCartDispatch must be used within CartProvider");
+  return context;
+}</code></pre>
+        </div>
+
+        <!-- Section 8 -->
+        <h2>8. useReducer: Finite State Machines in React</h2>
+        <p>
+          When component state has multiple sub-values, complex transitions, or the next state depends on multiple previous values, <code>useState</code> leads to fragmented, error-prone logic.
+        </p>
+        <p>
+          <code>useReducer</code> centralizes state transitions in a pure reducer function:
+        </p>
+        <p>
+          \[
+          (state, action) \implies newState
+          \]
+        </p>
+
+        <div class="code-block" data-lang="javascript">
+          <div class="code-header">
+            <span class="code-lang">javascript</span>
+            <button class="copy-btn" type="button">Copy</button>
+          </div>
+          <pre><code class="language-javascript">import { useReducer, useEffect } from "react";
+
+// State Machine definition: IDLE -> LOADING -> SUCCESS / ERROR
+const initialState = {
+  status: "idle", // 'idle' | 'loading' | 'success' | 'error'
+  data: null,
+  error: null
+};
+
+function fetchReducer(state, action) {
+  switch (action.type) {
+    case "FETCH_START":
+      return { status: "loading", data: null, error: null };
+    case "FETCH_SUCCESS":
+      return { status: "success", data: action.payload, error: null };
+    case "FETCH_ERROR":
+      return { status: "error", data: null, error: action.payload };
+    default:
+      return state;
+  }
+}
+
+export function useFetch(url) {
+  const [state, dispatch] = useReducer(fetchReducer, initialState);
+
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    async function fetchData() {
+      dispatch({ type: "FETCH_START" });
+      try {
+        const res = await fetch(url, { signal: controller.signal });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (isMounted) dispatch({ type: "FETCH_SUCCESS", payload: data });
+      } catch (err) {
+        if (err.name !== "AbortError" && isMounted) {
+          dispatch({ type: "FETCH_ERROR", payload: err.message });
+        }
+      }
+    }
+
+    fetchData();
+
+    return () => {
+      isMounted = false;
+      controller.abort(); // Cancel in-flight network request on unmount/re-run!
+    };
+  }, [url]);
+
+  return state;
+}</code></pre>
+        </div>
+
+        <!-- Section 9 -->
+        <h2>9. Practical Exercises & Code Walkthrough</h2>
+
+        <div class="exercise-card">
+          <div class="exercise-header">
+            <span class="exercise-tag">Exercise 16.1</span>
+            <span class="exercise-title">Build a Production useDebounce Custom Hook</span>
+          </div>
+          <p>
+            <strong>Problem:</strong> Create a reusable custom hook <code>useDebounce(value, delayMs)</code> that delays updating its returned value until the specified delay has elapsed without new changes. Ensure timers are cleanly reset on rapid changes and cancelled on unmount.
+          </p>
+          <details class="solution-details">
+            <summary class="solution-toggle">View Complete Solution</summary>
+            <div class="solution-body">
+              <div class="code-block" data-lang="javascript">
+                <div class="code-header">
+                  <span class="code-lang">javascript</span>
+                  <button class="copy-btn" type="button">Copy</button>
+                </div>
+                <pre><code class="language-javascript">import { useState, useEffect } from "react";
+
+export function useDebounce(value, delay = 500) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    // Schedule update after delay
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    // Cancel timer if value changes (user is still typing) or component unmounts
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
+// Usage in live search:
+export function SearchInput({ onSearch }) {
+  const [text, setText] = useState("");
+  const debouncedSearch = useDebounce(text, 300);
+
+  useEffect(() => {
+    if (debouncedSearch) {
+      onSearch(debouncedSearch);
+    }
+  }, [debouncedSearch, onSearch]);
+
+  return (
+    &lt;input
+      type="text"
+      placeholder="Type to search..."
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+    /&gt;
+  );
+}</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- Section 10: Interview Questions -->
+        <section class="qa-section" id="interview-questions">
+          <h2>10. Chapter-Specific Interview Questions and Answers</h2>
+          <p>
+            Master these 20 high-frequency interview questions covering React Hooks, memory lifecycles, and performance optimization.
+          </p>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q01</span>
+              <span class="qa-title">Why does calling setCount(count + 1) three times in a single event handler only increment the counter by 1?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Because state in React behaves like a snapshot of the current render. If `count` is 0 at the time the click handler executes, all three `setCount(count + 1)` calls resolve to `setCount(0 + 1)`. React batches these updates and applies the final scheduled value, which is 1. To queue multiple sequential increments, you must pass a functional updater: `setCount(prev => prev + 1)`. The functional updater receives the pending state from React's internal queue rather than the stale snapshot."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q02</span>
+              <span class="qa-title">What is Automatic Batching in React 18, and how does it differ from React 17?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In React 17, state updates were only batched when triggered directly inside React synthetic event handlers. Updates occurring inside native promises (`fetch.then()`), `setTimeout`, or native DOM event listeners were executed immediately and unbatched, causing multiple re-renders and paints. React 18 introduced Automatic Batching: all state updates, regardless of whether they originate inside React handlers, asynchronous promises, or timers, are automatically batched into a single render pass."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q03</span>
+              <span class="qa-title">What is a Stale Closure in React, and how can it be diagnosed and resolved?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A stale closure occurs when a callback, timer, or effect captures a snapshot of a variable from an earlier render and holds on to that reference even after state has updated. For example, a `setInterval` created inside a `useEffect` with an empty dependency array will only ever see the initial render's state. To fix it, you can: 1. Use functional state updaters (`setState(prev => ...)`), which do not depend on closure variables, or 2. Synchronize the state into a `useRef`, which preserves referential identity and allows reading `ref.current` to always get the latest value."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q04</span>
+              <span class="qa-title">What is the exact execution timing of the useEffect cleanup function?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "The cleanup function runs in two scenarios: First, when the component unmounts from the DOM. Second, and crucially, before the effect re-executes on a subsequent render due to a dependency change. When dependencies change, React first runs the cleanup function from the PREVIOUS render to tear down old subscriptions or timers, and only then executes the new effect setup function with the new values."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q05</span>
+              <span class="qa-title">What is Lazy State Initialization in useState, and when should you use it?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Lazy initialization is when you pass a function to `useState(() => expensiveInitialValue())` instead of the value directly. If you pass an expression like `useState(JSON.parse(localStorage.getItem('key')))` directly, JavaScript executes `localStorage.getItem` and `JSON.parse` on every single render, even though React discards the result after the initial mount. Passing a function ensures the expensive logic runs only once during initial mounting."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q06</span>
+              <span class="qa-title">What is the difference between useMemo and useCallback?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`useMemo` memoizes the RESULT of calling a calculation function: `useMemo(() => computeValue(a, b), [a, b])`. It returns a cached value. `useCallback` memoizes the FUNCTION REFERENCE itself: `useCallback((e) => handleEvent(e), [dep])`. In fact, `useCallback(fn, deps)` is syntactically equivalent to `useMemo(() => fn, deps)`. `useCallback` is primarily used to pass stable callback references to memoized child components (`React.memo`)."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q07</span>
+              <span class="qa-title">Why does wrapping everything in useMemo and useCallback lead to worse performance?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Memoization is not free. Every call to `useMemo` or `useCallback` incurs computational and memory overhead: allocating memory for the hook closure, allocating the dependency array, and performing shallow comparison checks on every single dependency on every render. If the computation being memoized is cheap (like basic math or small array filtering), the overhead of dependency comparison exceeds the computation cost itself. Only use memoization when profiling proves a performance bottleneck or when preserving referential equality for child `React.memo` components."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q08</span>
+              <span class="qa-title">What is the difference between useRef and useState? When does mutating useRef NOT trigger a re-render?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`useState` stores data that affects the visual UI output; updating state notifies React and triggers a component re-render. `useRef` returns a plain mutable JavaScript container `{ current: initialValue }` that persists across renders. Mutating `ref.current` is a direct object property mutation; React does not track object mutations and NEVER triggers a re-render. Use `useRef` when storing data that does not impact JSX rendering, such as DOM elements, timer IDs, or previous values."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q09</span>
+              <span class="qa-title">What is the Re-render Cascade problem with useContext, and how do you prevent it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Whenever the `value` of a Context Provider changes, every component calling `useContext(MyContext)` is forced to re-render, even if wrapped in `React.memo`, and even if it only cares about an untouched property in the context object. To mitigate this: 1. Split contexts into smaller, granular contexts—most commonly separating State from Dispatch (`CartStateContext` and `CartDispatchContext`). Because `dispatch` identity never changes, components consuming dispatch never re-render. 2. Colocate state as close to its consumers as possible."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">When should you prefer useReducer over useState?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "You should prefer `useReducer` when: 1. You have complex state logic involving multiple sub-values (e.g. status, data, error, pagination) that update together. 2. The next state depends on multiple previous states. 3. State transitions represent a Finite State Machine (e.g. idle -> loading -> success). 4. You want to pass a stable `dispatch` function down deep component trees via context rather than passing multiple callback props."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">What is the difference between useEffect and useLayoutEffect? When MUST you use useLayoutEffect?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`useEffect` runs asynchronously and passively AFTER the browser has painted pixels to the screen, ensuring effects do not block user visuals. `useLayoutEffect` runs synchronously immediately after React commits DOM mutations, but BEFORE the browser paints. You MUST use `useLayoutEffect` when reading DOM layout measurements (e.g. `getBoundingClientRect()`, scroll height) and synchronously adjusting styles before the user sees the screen. Using `useEffect` for DOM measurements can cause visual screen flickering."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">Why does React StrictMode invoke effects and render functions twice in development mode?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In React 18 development mode, StrictMode intentionally double-invokes component functions and effect lifecycles (`mount -> cleanup -> mount`). This is designed to uncover bugs caused by impure render functions and missing effect cleanups (such as uncancelled network requests, forgotten event listeners, or timer leaks). It prepares codebases for future Concurrent React features like Offscreen caching. This behavior only occurs in development; production executes once."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: A user rapidly types 'React' then 'Node' into a search box. The 'React' network request takes 2 seconds, but 'Node' takes 200ms. The UI shows 'React' results instead of 'Node'. How do you fix this race condition?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "This is an asynchronous race condition where an older, slower request completes after a newer request. There are two solutions: 1. `AbortController`: In the `useEffect`, instantiate an `AbortController` and pass `signal` to `fetch()`. In the effect cleanup function, call `controller.abort()`. When the search term updates, React cancels the previous pending fetch request immediately. 2. A boolean `isCancelled` flag inside the effect that is set to `true` in cleanup, ignoring responses from superseded renders."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What are the rules for writing a Custom Hook? Do custom hooks share state between component instances?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A custom hook is a JavaScript function whose name starts with 'use' (e.g. `useFetch`, `useAuth`) and that may call other React hooks. Crucially, custom hooks share stateful LOGIC, NOT state itself! Each component that invokes a custom hook receives an entirely independent, isolated instance of state and effects, exactly as if those hooks were called directly inside the component body."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">What is flushSync in React 18, and what is its legitimate use case?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`flushSync` is a utility from `react-dom` that forces React to exit automatic batching and flush any pending state updates to the real DOM immediately and synchronously. Its primary use case is when an action requires immediate DOM layout calculation—for instance, adding a new message to a chat list and immediately scrolling the container to the very bottom: `flushSync(() => setMessages(...)); chatBoxRef.current.scrollTop = chatBoxRef.current.scrollHeight;`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">Why must functions or objects defined inside a component body be wrapped in useCallback/useMemo if placed in a useEffect dependency array?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In JavaScript, objects and functions are compared by reference equality (`===`). Every time a component renders, functions and objects declared inside its body are recreated at brand-new memory addresses. If listed in a `useEffect` dependency array, the effect compares the new reference with the old reference, sees they are unequal, and triggers the effect again. This causes an infinite loop: render -> new reference -> effect runs -> state updates -> render."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is the useId hook introduced in React 18, and what problem does it solve in full-stack SSR apps?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`useId` generates unique, stable ID strings that are guaranteed to match across both server-side rendering (SSR) and client-side hydration. In SSR applications, using random numbers (`Math.random()`) or sequential counters causes hydration mismatch errors because the ID generated on the Node.js server differs from the ID generated during client hydration. `useId` derives IDs deterministically from the component's position in the Fiber tree, ensuring perfect hydration match."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">What happens if you omit the dependency array in useEffect entirely: useEffect(fn)?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "If you pass no dependency array at all (`useEffect(fn)`), the effect function executes after EVERY single render of the component (both mount and every re-render). If that effect updates state (`setState`), it triggers another re-render, creating an immediate infinite loop that freezes the browser. An empty array `[]` means run only on mount; passing dependencies `[a, b]` means run on mount and when `a` or `b` changes."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">Scenario: You have a modal that should close when the user clicks outside it. How do you implement a useOnClickOutside custom hook safely?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I would create a custom hook that accepts a `ref` pointing to the modal container and a `handler` callback. Inside a `useEffect`, attach a `mousedown` or `touchstart` event listener to `document`. When a click occurs, check `ref.current && !ref.current.contains(event.target)`. If the target is not contained within the modal ref, call `handler(event)`. In the effect cleanup function, remove the listener from `document` to prevent memory leaks."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">What is the useTransition hook in React 18, and how does it improve perceived performance?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`useTransition` allows developers to differentiate between urgent updates and non-urgent transitions. Urgent updates (like typing in a text field) must update the DOM immediately to keep the UI responsive. Non-urgent transitions (like filtering a heavy list of 5,000 items) are wrapped in `startTransition(() => setFilter(value))`. React marks transition updates with a lower priority Lane, keeping the typing input responsive at 60fps while rendering the filtered list in the background, exposing an `isPending` boolean for loading spinners."
+                </p>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>

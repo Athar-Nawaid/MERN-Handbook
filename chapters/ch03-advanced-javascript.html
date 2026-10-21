@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter 3: Advanced JavaScript | Full-Stack Interview Guide</title>
+  <meta name="description" content="In-depth guide to JavaScript execution contexts, prototype chains, this binding rules, call/apply/bind, functional composition, generators, and V8 garbage collection.">
+  
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/code.css">
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/print.css" media="print">
+</head>
+<body class="chapter-page" data-chapter-id="3">
+
+  <header class="site-header">
+    <div class="header-left">
+      <button class="menu-toggle" type="button" aria-label="Toggle navigation menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <a href="../index.html" class="brand-link">
+        <svg class="brand-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+        <span>FullStack.Prep</span>
+      </a>
+    </div>
+
+    <div class="header-right">
+      <button class="search-trigger" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search...</span>
+        <kbd class="search-shortcut">Ctrl+K</kbd>
+      </button>
+      <button class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <aside id="book-sidebar" class="sidebar"></aside>
+
+    <main class="content-area">
+      <div class="content-inner">
+        
+        <header class="chapter-header">
+          <div class="chapter-part-label">PART I — Programming Foundations and JavaScript</div>
+          <h1 class="chapter-title">Chapter 3: Advanced JavaScript</h1>
+          <p class="chapter-lead">
+            Mastering the advanced runtime engine: Execution Contexts, Lexical Environments, Prototype Inheritance Chains, the 4 rules of `this` binding, functional composition, custom Iterators & Generators, and V8 Garbage Collection mechanics.
+          </p>
+          
+          <div class="chapter-meta-bar">
+            <div class="chapter-meta-tags">
+              <span class="meta-pill" id="chapter-reading-time">Calculating read time...</span>
+              <span class="meta-pill">Advanced Runtime</span>
+              <span class="meta-pill">20 Interview Questions</span>
+            </div>
+            <div class="chapter-action-btns">
+              <button id="btn-toggle-complete" class="action-btn" type="button">Mark Complete</button>
+              <button id="btn-toggle-bookmark" class="action-btn" type="button">Save for Revision</button>
+            </div>
+          </div>
+        </header>
+
+        <div class="callout callout-important">
+          <div class="callout-title">🎯 Learning Objectives for This Chapter</div>
+          <ul>
+            <li>Trace Execution Context creation: VariableEnvironment, LexicalEnvironment, and Outer Reference links.</li>
+            <li>Master the 4 precedence rules of <code>this</code> binding (Default, Implicit, Explicit, <code>new</code>), plus lexical arrow behavior.</li>
+            <li>Implement polyfills for <code>Function.prototype.bind</code>, <code>call</code>, and <code>apply</code>.</li>
+            <li>Deconstruct the JavaScript Prototype Chain from <code>obj</code> up to <code>Object.prototype.__proto__ === null</code>.</li>
+            <li>Compare Object-Oriented inheritance against Functional Programming with pure functions and immutability.</li>
+            <li>Implement Debounce, Throttle, and Function Composition (pipe/compose) from scratch.</li>
+            <li>Build custom Iterators and Generator functions with <code>Symbol.iterator</code> and <code>yield*</code>.</li>
+            <li>Understand V8 Garbage Collection: Young/Old generation, Scavenge vs Mark-Sweep-Compact, and avoiding retain cycles.</li>
+          </ul>
+        </div>
+
+        <!-- Section 1 -->
+        <h2>1. Execution Contexts and Lexical Environments</h2>
+        <p>
+          Whenever JavaScript executes code, it does so inside an <strong>Execution Context</strong>. An Execution Context is an abstract conceptual environment containing everything necessary to evaluate the current script or function.
+        </p>
+
+        <h3>The Three Types of Execution Context</h3>
+        <ol>
+          <li><strong>Global Execution Context (GEC):</strong> The base context created when the script first loads. It creates the global object (<code>window</code> in browsers, <code>global</code> in Node.js) and sets <code>this</code> to the global object.</li>
+          <li><strong>Function Execution Context (FEC):</strong> Created dynamically every time a function is invoked. Each function call gets its own brand-new execution context.</li>
+          <li><strong>Eval Execution Context:</strong> Code executed inside the <code>eval()</code> string function (strictly discouraged in production).</li>
+        </ol>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++--------------------------------------------------------------------------+
+|                       EXECUTION CONTEXT STRUCTURE                        |
++--------------------------------------------------------------------------+
+| 1. LexicalEnvironment                                                    |
+|    - EnvironmentRecord: Stores let, const, function declarations         |
+|    - OuterEnvRef: Pointer to parent lexical scope (Scope Chain)          |
+|                                                                          |
+| 2. VariableEnvironment                                                   |
+|    - EnvironmentRecord: Stores legacy 'var' bindings                     |
+|                                                                          |
+| 3. ThisBinding: Evaluated at runtime based on invocation pattern         |
++--------------------------------------------------------------------------+
+          </div>
+          <div class="diagram-caption">Figure 3.1: Internal Components of a V8 Execution Context</div>
+        </div>
+
+        <h3>The Two Phases of Every Execution Context</h3>
+        <ul>
+          <li><strong>Phase 1: Creation Phase (Compilation):</strong> The engine allocates memory for variables and functions. <code>var</code> declarations are initialized to <code>undefined</code>; <code>let</code>/<code>const</code> are declared but remain uninitialized (TDZ); function declarations are placed into memory in their entirety.</li>
+          <li><strong>Phase 2: Execution Phase:</strong> Code is evaluated line by line. Variables are assigned their actual runtime values, and functions are executed.</li>
+        </ul>
+
+        <hr>
+
+        <!-- Section 2 -->
+        <h2>2. The `this` Keyword: The 4 Binding Rules</h2>
+        <p>
+          In JavaScript, <code>this</code> is not bound lexically based on where a function was written (except for arrow functions). Instead, <strong><code>this</code> is determined dynamically at the call-site when the function is invoked</strong>.
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Precedence</th>
+                <th>Binding Rule</th>
+                <th>Invocation Syntax</th>
+                <th>What `this` Points To</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>1 (Highest)</strong></td>
+                <td><code>new</code> Binding</td>
+                <td><code>new MyFunc()</code></td>
+                <td>Points to the newly instantiated object in the heap.</td>
+              </tr>
+              <tr>
+                <td><strong>2</strong></td>
+                <td>Explicit Binding</td>
+                <td><code>fn.call(ctx)</code>, <code>fn.apply(ctx)</code>, <code>fn.bind(ctx)</code></td>
+                <td>Points explicitly to the provided <code>ctx</code> object.</td>
+              </tr>
+              <tr>
+                <td><strong>3</strong></td>
+                <td>Implicit Binding</td>
+                <td><code>obj.method()</code></td>
+                <td>Points to the context object before the dot (<code>obj</code>).</td>
+              </tr>
+              <tr>
+                <td><strong>4 (Lowest)</strong></td>
+                <td>Default Binding</td>
+                <td>Standalone call: <code>fn()</code></td>
+                <td><code>undefined</code> in strict mode (<code>"use strict"</code>); global object in non-strict mode.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Rule Exceptions: Arrow Functions</h3>
+        <p>
+          Arrow functions do <strong>not</strong> have their own <code>this</code>. They resolve <code>this</code> lexically, searching up the scope chain to the enclosing execution context where they were defined.
+        </p>
+
+        <pre><code class="language-javascript">const team = {
+  name: "Platform Engineering",
+  members: ["Alice", "Bob"],
+  
+  // Buggy approach with regular function:
+  printMembersRegular() {
+    this.members.forEach(function(member) {
+      // In a regular function callback, 'this' defaults to undefined or global window!
+      console.log(`${member} works in ${this.name}`); // TypeError or "undefined"
+    });
+  },
+
+  // Fixed approach with Arrow Function (inherits 'this' from printMembersArrow):
+  printMembersArrow() {
+    this.members.forEach(member => {
+      console.log(`${member} works in ${this.name}`); // Works! "Alice works in Platform Engineering"
+    });
+  }
+};</code></pre>
+
+        <hr>
+
+        <!-- Section 3 -->
+        <h2>3. Call, Apply, and Bind</h2>
+        <p>
+          When you need to borrow a method or explicitly specify what <code>this</code> points to, JavaScript provides three standard prototype methods on <code>Function.prototype</code>.
+        </p>
+
+        <ul>
+          <li><strong><code>call(thisArg, arg1, arg2, ...)</code>:</strong> Invokes the function immediately, passing arguments comma-separated.</li>
+          <li><strong><code>apply(thisArg, [arg1, arg2, ...])</code>:</strong> Invokes the function immediately, passing arguments as an array.</li>
+          <li><strong><code>bind(thisArg, arg1, arg2, ...)</code>:</strong> Does <em>not</em> invoke immediately. Returns a new bound function with <code>this</code> permanently locked to <code>thisArg</code>.</li>
+        </ul>
+
+        <div class="exercise-box">
+          <div class="exercise-header">
+            <span>Interview Polyfill: Implement `Function.prototype.myBind`</span>
+            <span class="meta-pill">Senior Level</span>
+          </div>
+          <div class="exercise-body">
+            <p>Write an exact vanilla JavaScript polyfill for <code>Function.prototype.bind</code> using closures and method borrowing.</p>
+
+            <pre><code class="language-javascript">Function.prototype.myBind = function(context, ...boundArgs) {
+  if (typeof this !== "function") {
+    throw new TypeError("Function.prototype.bind - what is trying to be bound is not callable");
+  }
+
+  const originalFunction = this;
+
+  return function(...invokedArgs) {
+    // Merge bound arguments from bind() with runtime arguments from invocation
+    return originalFunction.apply(context, [...boundArgs, ...invokedArgs]);
+  };
+};
+
+// Verification:
+function greet(greeting, punctuation) {
+  return `${greeting}, ${this.name}${punctuation}`;
+}
+
+const user = { name: "Sarah" };
+const greetSarah = greet.myBind(user, "Welcome");
+console.log(greetSarah("!")); // Output: "Welcome, Sarah!"</code></pre>
+          </div>
+        </div>
+
+        <hr>
+
+        <!-- Section 4 -->
+        <h2>4. Prototypes and Prototype Inheritance</h2>
+        <p>
+          Unlike Java, C++, or C# which use classical class-based inheritance, JavaScript uses <strong>Prototypal Inheritance</strong>. Objects inherit properties directly from other objects through an internal link called <code>[[Prototype]]</code> (accessible in code via <code>__proto__</code> or <code>Object.getPrototypeOf()</code>).
+        </p>
+
+        <div class="diagram-container">
+          <div class="ascii-diagram">
++---------------------+        [[Prototype]]       +-----------------------+
+|  Instance: dog      | -------------------------> |  Animal.prototype     |
+|  name: 'Rex'        |                            |  bark: function()     |
++---------------------+                            +-----------------------+
+                                                               | [[Prototype]]
+                                                               v
+                                                   +-----------------------+
+                                                   |  Object.prototype     |
+                                                   |  toString, hasOwn     |
+                                                   +-----------------------+
+                                                               | [[Prototype]]
+                                                               v
+                                                             null
+          </div>
+          <div class="diagram-caption">Figure 3.2: The Prototype Delegation Chain terminating at null</div>
+        </div>
+
+        <h3>How Property Lookup Works</h3>
+        <p>
+          When accessing <code>dog.bark()</code>:
+        </p>
+        <ol>
+          <li>The engine checks if <code>dog</code> owns the property directly (<code>dog.hasOwnProperty('bark')</code>). If yes, it executes it.</li>
+          <li>If not found, it traverses up the <code>[[Prototype]]</code> link to <code>Animal.prototype</code>.</li>
+          <li>If still not found, it traverses to <code>Object.prototype</code>.</li>
+          <li>If it reaches <code>null</code> without finding the property, it returns <code>undefined</code> (or throws a <code>TypeError</code> if invoked).</li>
+        </ol>
+
+        <pre><code class="language-javascript">// Prototypal Inheritance using Object.create()
+const animal = {
+  eats: true,
+  walk() {
+    return `${this.name} walks.`;
+  }
+};
+
+const rabbit = Object.create(animal); // rabbit.[[Prototype]] = animal
+rabbit.name = "White Rabbit";
+
+console.log(rabbit.eats);   // true (Inherited from animal)
+console.log(rabbit.walk()); // "White Rabbit walks." ('this' points to rabbit!)
+console.log(Object.getPrototypeOf(rabbit) === animal); // true</code></pre>
+
+        <hr>
+
+        <!-- Section 5 -->
+        <h2>5. Iterators and Generator Functions</h2>
+        <p>
+          An <strong>Iterator</strong> is an object that implements the <strong>Iterator Protocol</strong>: an object with a <code>next()</code> method that returns an object containing <code>{ value: any, done: boolean }</code>.
+        </p>
+        <p>
+          A <strong>Generator Function</strong> (declared with <code>function*</code>) is a special function that can pause execution (using <code>yield</code>) and resume later, yielding values lazily on demand.
+        </p>
+
+        <pre><code class="language-javascript">// Infinite ID Generator (Memory efficient - does not store millions of IDs)
+function* idGenerator(prefix = "id") {
+  let id = 1;
+  while (true) {
+    yield `${prefix}_${id++}`;
+  }
+}
+
+const gen = idGenerator("user");
+console.log(gen.next()); // { value: 'user_1', done: false }
+console.log(gen.next()); // { value: 'user_2', done: false }
+console.log(gen.next()); // { value: 'user_3', done: false }</code></pre>
+
+        <hr>
+
+        <!-- Section 6 -->
+        <h2>6. Debouncing versus Throttling</h2>
+        <p>
+          Both debouncing and throttling limit how frequently a function can execute, but they solve different UI interaction problems:
+        </p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Pattern</th>
+                <th>Core Mechanics</th>
+                <th>Primary Use Cases</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Debounce</strong></td>
+                <td>Delays execution until the user has <em>stopped</em> triggering calls for \(N\) milliseconds. Every new event resets the timer.</td>
+                <td>Search input auto-complete, window resize recalculations, form autosave.</td>
+              </tr>
+              <tr>
+                <td><strong>Throttle</strong></td>
+                <td>Guarantees execution at a regular fixed maximum frequency (at most once every \(N\) milliseconds), regardless of how many events fire.</td>
+                <td>Infinite scroll pagination on scroll, drag-and-drop mouse movements, game loop actions.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <pre><code class="language-javascript">// Production-Grade Throttle Implementation
+function throttle(fn, limit = 200) {
+  let inThrottle = false;
+
+  return function(...args) {
+    if (!inThrottle) {
+      fn.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => {
+        inThrottle = false;
+      }, limit);
+    }
+  };
+}
+
+// Window scroll throttled to execute at most once every 200ms
+window.addEventListener("scroll", throttle(() => {
+  console.log("Checking infinite scroll position...");
+}, 200));</code></pre>
+
+        <hr>
+
+        <!-- Section 7: Interview Questions and Answers -->
+        <section class="interview-section">
+          <h2>Interview Questions and Answers</h2>
+          <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            20 senior-level JavaScript interview questions covering `this` binding, prototypes, inheritance, execution context, memory management, and function engineering.
+          </p>
+
+          <div class="qa-toolbar">
+            <div class="qa-filter-btns">
+              <button class="qa-filter-btn active" data-filter="all">All (20)</button>
+              <button class="qa-filter-btn" data-filter="beginner">Beginner</button>
+              <button class="qa-filter-btn" data-filter="intermediate">Intermediate</button>
+              <button class="qa-filter-btn" data-filter="advanced">Advanced</button>
+              <button class="qa-filter-btn" data-filter="scenario">Scenario</button>
+            </div>
+            <button class="qa-toggle-all" type="button">Expand All Answers</button>
+          </div>
+
+          <!-- Q1 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q1</span>
+              <span class="qa-title">What are the 4 rules governing `this` binding in JavaScript, in order of precedence?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In order of highest to lowest precedence: 1. `new` binding (calling a function with `new` binds `this` to the newly allocated instance), 2. Explicit binding (using call, apply, or bind explicitly assigns `this`), 3. Implicit binding (calling a method on an object context like `obj.method()` binds `this` to `obj`), and 4. Default binding (standalone invocation `fn()` binds `this` to undefined in strict mode, or the global object in non-strict mode). Arrow functions are the exception: they do not have their own `this` and inherit it lexically."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q2 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q2</span>
+              <span class="qa-title">What is the difference between `__proto__` and `prototype`?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`prototype` is a property found exclusively on constructor functions and classes. It defines the blueprint of methods and properties that will be assigned as the `[[Prototype]]` to any instances created via the `new` keyword. `__proto__` (or `[[Prototype]]`) is an internal property present on *every* object instance that points directly to the prototype object it inherits from."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">function Person(name) { this.name = name; }
+Person.prototype.sayHi = function() { return "Hi"; };
+
+const alice = new Person("Alice");
+console.log(alice.__proto__ === Person.prototype); // true
+console.log(Person.__proto__ === Function.prototype); // true</code></pre>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q3 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q3</span>
+              <span class="qa-title">What is the difference between `call()`, `apply()`, and `bind()`?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`call` and `apply` both execute the function immediately with a specified `this` context; `call` accepts arguments individually separated by commas, while `apply` accepts them as an array. `bind` does not execute the function immediately; it returns a brand-new bound function with its `this` context and initial arguments permanently locked."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q4 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q4</span>
+              <span class="qa-title">Can you override a function's `this` context if it has already been bound using `.bind()`?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "No. Once a function is hard-bound with `.bind()`, subsequent calls to `.call()`, `.apply()`, or another `.bind()` cannot override the original `this` context. The only exception that can override a bound function's `this` is invoking it as a constructor with the `new` operator, which binds `this` to the newly created instance."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q5 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q5</span>
+              <span class="qa-title">What is the difference between Debouncing and Throttling? Give an example for each.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Debounce delays execution until a burst of rapid events stops for a specified quiet period—for example, waiting for a user to pause typing before triggering a search API query. Throttle enforces a maximum execution frequency over time—for example, firing a scroll handler at most once every 100ms regardless of how many hundreds of scroll events the mouse generates."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q6 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q6</span>
+              <span class="qa-title">What happens when you invoke a constructor with the `new` keyword? Trace the 4 steps.</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Four distinct steps occur: 1. A brand-new empty JavaScript object is allocated in the heap: `{}`. 2. The internal `[[Prototype]]` (`__proto__`) of this new object is linked to the constructor's `prototype` object. 3. The constructor function is executed with `this` explicitly bound to the new object. 4. If the constructor returns its own non-primitive object, that object is returned; otherwise, the newly created instance is returned automatically."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q7 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q7</span>
+              <span class="qa-title">What is a Pure Function, and what are its two core rules?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A pure function satisfies two deterministic properties: 1. Given the identical arguments, it will always return the exact same output. 2. It has zero observable side effects—it does not mutate external variables, alter arguments, read from non-deterministic sources like Math.random() or Date.now(), or execute network/disk I/O."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q8 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q8</span>
+              <span class="qa-title">What is the difference between Function Composition using `pipe` vs `compose`?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Both take multiple functions and return a new function where the output of each function becomes the input of the next. The difference is evaluation direction: `compose` executes functions from right to left (standard in mathematical notation: f(g(x))), while `pipe` executes from left to right, matching human reading order."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">const pipe = (...fns) => x => fns.reduce((val, fn) => fn(val), x);
+const compose = (...fns) => x => fns.reduceRight((val, fn) => fn(val), x);</code></pre>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q9 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q9</span>
+              <span class="qa-title">What is the difference between `Array.prototype.map()` and `Array.prototype.forEach()`?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`forEach` is an iteration method that executes a callback on each element for side effects and returns `undefined`. `map` transforms each element and returns a brand-new array of equal length containing the transformed values, leaving the original array untouched."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q10 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q10</span>
+              <span class="qa-title">How does `Array.prototype.reduce()` work? What happens if you omit the initial value?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`reduce` iterates over an array and reduces it down to a single accumulated value (which can be a number, object, or array). If an initial value is supplied, the accumulator starts with that value and iteration begins at index 0. If omitted, the accumulator starts with the element at index 0, and iteration begins at index 1. Omission on an empty array throws a runtime TypeError."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q11 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q11</span>
+              <span class="qa-title">Explain what a Generator Function is and how the `yield` keyword operates.</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "A generator function (function*) returns a Generator object that adheres to both the Iterable and Iterator protocols. When called, the body does not execute immediately. Calling .next() runs the code until it encounters the `yield` keyword, which pauses the function's execution frame and returns the yielded value. Calling .next() again resumes execution right where it was paused with all local state intact."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q12 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q12</span>
+              <span class="qa-title">What is a WeakMap and WeakSet? How do they differ from Map and Set regarding garbage collection?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "In a standard Map or Set, keys/values are held with strong references; as long as the Map exists, those objects cannot be garbage-collected, creating potential memory leaks. In WeakMap and WeakSet, keys MUST be objects and are held with *weak references*. If there are no other references to a key object in the application, the garbage collector will reclaim it even if it is still registered in the WeakMap. Because of this, WeakMaps are not iterable and have no .size property."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q13 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q13</span>
+              <span class="qa-title">Scenario: You have an object with circular references (`obj.self = obj`). Why does `JSON.stringify(obj)` throw an error, and how do you handle it?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`JSON.stringify()` recursively traverses object keys. When it encounters a circular reference pointing back to an ancestor node, it enters an infinite recursion loop and throws a `TypeError: Converting circular structure to JSON`. To clone or serialize it, use the modern native `structuredClone()` API, or pass a custom replacer function utilizing a WeakSet to track already-visited object references."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q14 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q14</span>
+              <span class="qa-title">What are ES6 Classes under the hood? Are they actual classes like in C++ or syntax sugar?</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "ES6 Classes are predominantly syntactic sugar layered on top of JavaScript's existing prototype-based inheritance model. Under the hood, declaring a class creates a constructor function, and any methods declared inside the class body are attached directly to the constructor's `.prototype` object. However, classes add strict semantics: they cannot be called without `new`, class methods are non-enumerable by default, and class bodies always execute in strict mode."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q15 -->
+          <details class="qa-card diff-intermediate">
+            <summary class="qa-summary">
+              <span class="qa-num">Q15</span>
+              <span class="qa-title">Explain the difference between `Object.create(proto)` and `new Constructor()`.</span>
+              <span class="qa-difficulty diff-intermediate">Intermediate</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`Object.create(proto)` creates a new object whose prototype is explicitly set to `proto` without executing any constructor function. `new Constructor()` executes the constructor function's code with `this` bound to the new object, and links its prototype to `Constructor.prototype`."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q16 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q16</span>
+              <span class="qa-title">What is Tail Call Optimization (TCO)? Does JavaScript support it?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Tail Call Optimization is a compiler feature where calling a function as the final return expression of another function reuses the existing stack frame instead of allocating a new one, preventing stack overflow on deep recursion. While specified in ES6 for strict mode, V8 (Node/Chrome) and SpiderMonkey (Firefox) chose not to implement it because it breaks call-stack tracing for error debugging; only WebKit (Safari) implements it."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q17 -->
+          <details class="qa-card diff-beginner">
+            <summary class="qa-summary">
+              <span class="qa-num">Q17</span>
+              <span class="qa-title">What is the difference between `try...catch...finally`? When does `finally` execute?</span>
+              <span class="qa-difficulty diff-beginner">Beginner</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "`try` wraps code that might throw an error; `catch` intercepts and handles the error if one is thrown; and `finally` is a guaranteed cleanup block that executes unconditionally, whether an error occurred or not, and even if the try or catch block executes an explicit `return` statement."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q18 -->
+          <details class="qa-card diff-advanced">
+            <summary class="qa-summary">
+              <span class="qa-num">Q18</span>
+              <span class="qa-title">How does the V8 engine optimize property access on objects? What are Hidden Classes and Shapes?</span>
+              <span class="qa-difficulty diff-advanced">Advanced</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "Since JavaScript is dynamic, dictionary lookups for properties would be slow. V8 generates internal 'Hidden Classes' (Shapes) at runtime. Objects initialized with the identical properties in the exact same order share the same hidden class and memory offsets. If you dynamically add properties or change initialization order, V8 transitions to a new shape, deoptimizing inline caches."
+                </p>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q19 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q19</span>
+              <span class="qa-title">Scenario: What does this code print, and why?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">const obj = {
+  count: 10,
+  regular() {
+    return this.count;
+  },
+  arrow: () => {
+    return this.count;
+  }
+};
+
+const extractRegular = obj.regular;
+console.log(obj.regular());
+console.log(extractRegular());
+console.log(obj.arrow());</code></pre>
+                <div class="spoken-answer-box">
+                  <span class="spoken-answer-label">Spoken Interview Answer</span>
+                  <p>
+                    "1. `obj.regular()` logs 10 because it is invoked via implicit binding with `obj` as the context. 2. `extractRegular()` logs `undefined` (or throws in strict mode) because it was assigned to a standalone variable, triggering default binding to the global context where count does not exist. 3. `obj.arrow()` logs `undefined` because arrow functions inherit `this` from the enclosing lexical scope (the global file/module scope where obj was declared), NOT from the object literal body!"
+                  </p>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- Q20 -->
+          <details class="qa-card diff-scenario">
+            <summary class="qa-summary">
+              <span class="qa-num">Q20</span>
+              <span class="qa-title">Scenario: You need to create an immutable data pipeline that trims, lowercases, and replaces spaces with dashes for URL slugs. How do you write it cleanly using function composition?</span>
+              <span class="qa-difficulty diff-scenario">Scenario</span>
+            </summary>
+            <div class="qa-body">
+              <div class="spoken-answer-box">
+                <span class="spoken-answer-label">Spoken Interview Answer</span>
+                <p>
+                  "I define individual pure unary functions for each transformation step and combine them using a `pipe` higher-order function, ensuring data immutability and readability."
+                </p>
+              </div>
+              <div class="detailed-reasoning">
+                <pre><code class="language-javascript">const trim = str => str.trim();
+const toLower = str => str.toLowerCase();
+const replaceSpaces = str => str.replace(/\s+/g, '-');
+
+const pipe = (...fns) => initialVal => fns.reduce((acc, fn) => fn(acc), initialVal);
+
+const slugify = pipe(trim, toLower, replaceSpaces);
+
+console.log(slugify("   Advanced JavaScript Architecture & Internals   "));
+// Output: "advanced-javascript-architecture-&-internals"</code></pre>
+              </div>
+            </div>
+          </details>
+
+        </section>
+
+        <!-- Previous and Next Navigation -->
+        <nav id="prev-next-nav" class="prev-next-nav"></nav>
+
+      </div>
+    </main>
+
+    <aside id="chapter-toc" class="table-of-contents-rail"></aside>
+  </div>
+
+  <script src="../assets/js/book-data.js"></script>
+  <script src="../assets/js/theme.js"></script>
+  <script src="../assets/js/progress.js"></script>
+  <script src="../assets/js/prism.js"></script>
+  <script src="../assets/js/search.js"></script>
+  <script src="../assets/js/chapter.js"></script>
+</body>
+</html>
+
